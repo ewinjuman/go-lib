@@ -21,8 +21,6 @@ type Logger struct {
 	InstID    string
 	Options   Options
 	ThreadID  string
-	//CentralLogIsEnable      bool
-	//loggerTdr *zap.Logger
 }
 type Fields map[string]interface{}
 
@@ -120,22 +118,6 @@ func New(config Options) *Logger {
 	return l
 }
 
-type LogTdrModel struct {
-	AppName        string      `json:"app"`
-	AppVersion     string      `json:"ver"`
-	IP             string      `json:"ip"`
-	Port           int         `json:"port"`
-	SrcIP          string      `json:"srcIP"`
-	RespTime       int64       `json:"rt"`
-	Path           string      `json:"path"`
-	Header         interface{} `json:"header"`
-	Request        interface{} `json:"req"`
-	Response       interface{} `json:"resp"`
-	Error          string      `json:"error"`
-	ThreadID       string      `json:"threadID"`
-	AdditionalData interface{} `json:"addData"`
-}
-
 func getEncoder() zapcore.Encoder {
 	config := zapcore.EncoderConfig{
 		TimeKey:        "time",
@@ -215,29 +197,3 @@ func (l *Logger) MaskingJsonWithPath(data interface{}, jsonPath string) interfac
 	convert.StringToObject(jsonString, &mapData)
 	return mapData
 }
-
-//func (l *Logger) InfoTdr(message string, fields ...zap.Field) {
-//	l.loggerTdr.Info(message, fields...)
-//}
-
-//func (l *Logger) MaskingData(jsonByte []byte) (jsonString string) {
-//	b := new(bytes.Buffer)
-//	json.Compact(b, jsonByte)
-//	body := fmt.Sprintf(`%v`, b)
-//	path := strings.Split(Config.Config.Logger.MaskingLogJsonPath,"|")
-//	//[]string{"idCard", "selfie", "data.id"}
-//	var replaceString []string
-//	for _, p := range path {
-//		value := gjson.Get(fmt.Sprintf(`%v`, b), p)
-//		if value.String() != "" && value.String() != "null" {
-//			replaceString = append(replaceString, value.String())
-//		}
-//	}
-//
-//	for _, rc := range replaceString {
-//		body = strings.Replace(body, rc, "********", -1)
-//	}
-//
-//	jsonString = body
-//	return
-//}

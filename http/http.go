@@ -14,11 +14,34 @@ import (
 	"github.com/go-resty/resty/v2"
 )
 
+type Method string
+
+type RequestConfig struct {
+	Method     Method
+	Host       string
+	Path       string
+	Header     http.Header
+	Payload    interface{}
+	QueryParam map[string]string
+	File       []MultipartData
+}
+
 type RestClient interface {
 	DefaultHeader(username, password string) http.Header
 	BasicAuth(username, password string) string
 	Execute(session *Session.Session, host string, path string, method string, headers http.Header, payload interface{}, queryParam map[string]string, file []MultipartData) (body []byte, statusCode int, err error)
+	//Request(request RequestConfig) (body []byte, statusCode int, err error)
+	//Execute(session *Session.Session, host string, path string, method string, headers http.Header, payload interface{}, PathParams map[string]string, queryParam map[string]string, file []MultipartData) (body []byte, statusCode int, err error)
 }
+
+const (
+	MethodPost   Method = "POST"
+	MethodGet    Method = "GET"
+	MethodPut    Method = "PUT"
+	MethodDelete Method = "DELETE"
+	MethodPatch  Method = "PATCH"
+	MethodOption Method = "OPTION"
+)
 
 func New(options Options) RestClient {
 	httpClient := resty.New()
@@ -39,6 +62,7 @@ func New(options Options) RestClient {
 type client struct {
 	options    Options
 	httpClient *resty.Client
+	session    *Session.Session
 }
 
 func (c *client) DefaultHeader(username, password string) http.Header {

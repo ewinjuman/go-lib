@@ -3,6 +3,7 @@ package logger
 import (
 	"context"
 	"fmt"
+	"github.com/ewinjuman/go-lib/v2/constant"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -18,7 +19,6 @@ import (
 
 // Level type untuk custom log levels
 type Level string
-type ContextKey string
 
 const (
 	DebugLevel Level = "debug"
@@ -26,15 +26,6 @@ const (
 	WarnLevel  Level = "warn"
 	ErrorLevel Level = "error"
 	FatalLevel Level = "fatal"
-)
-
-// contextKey untuk menyimpan values di context
-type contextKey string
-
-const (
-	RequestIDKey contextKey = "request_id"
-	TraceIDKey   contextKey = "trace_id"
-	UserIDKey    contextKey = "user_id"
 )
 
 // Options untuk konfigurasi logger
@@ -209,17 +200,17 @@ func (l *Logger) WithContext(ctx context.Context) *zap.Logger {
 	fields := []zap.Field{}
 
 	// Add trace ID
-	if traceID, ok := ctx.Value(TraceIDKey).(string); ok {
+	if traceID, ok := ctx.Value(constant.TraceIDKey).(string); ok {
 		fields = append(fields, zap.String("trace_id", traceID))
 	}
 
 	// Add request ID
-	if requestID, ok := ctx.Value(RequestIDKey).(string); ok {
+	if requestID, ok := ctx.Value(constant.RequestIDKey).(string); ok {
 		fields = append(fields, zap.String("request_id", requestID))
 	}
 
 	// Add user ID
-	if userID, ok := ctx.Value(UserIDKey).(string); ok {
+	if userID, ok := ctx.Value(constant.UserIDKey).(string); ok {
 		fields = append(fields, zap.String("user_id", userID))
 	}
 
@@ -562,8 +553,8 @@ func NewContext() context.Context {
 	requestID := uuid.New().String()
 	traceID := uuid.New().String()
 
-	ctx = context.WithValue(ctx, RequestIDKey, requestID)
-	ctx = context.WithValue(ctx, TraceIDKey, traceID)
+	ctx = context.WithValue(ctx, constant.RequestIDKey, requestID)
+	ctx = context.WithValue(ctx, constant.TraceIDKey, traceID)
 
 	return ctx
 }

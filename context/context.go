@@ -2,26 +2,11 @@ package context
 
 import (
 	"context"
+	"github.com/ewinjuman/go-lib/v2/constant"
 	Logger "github.com/ewinjuman/go-lib/v2/logger"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"time"
-)
-
-type ContextKey string
-
-const (
-	AppContextKey     ContextKey = "app_context"
-	RequestTimeKey    ContextKey = "request_time"
-	RequestMethodKey  ContextKey = "request_method"
-	RequestPathKey    ContextKey = "request_path"
-	RequestIPKey      ContextKey = "request_ip"
-	RequestAgentKey   ContextKey = "request_user_agent"
-	ResponseStatusKey ContextKey = "response_status"
-	ResponseTimeKey   ContextKey = "response_time"
-	RequestIDKey      ContextKey = "request_id"
-	TraceIDKey        ContextKey = "trace_id"
-	UserIDKey         ContextKey = "user_id"
 )
 
 type AppContext struct {
@@ -48,7 +33,7 @@ func New(log *Logger.Logger) *AppContext {
 
 // FromFiber mengambil RequestContext dari fiber.Ctx
 func FromFiber(c *fiber.Ctx) *AppContext {
-	ctx := c.Locals(AppContextKey)
+	ctx := c.Locals(constant.AppContextKey)
 	if requestCtx, ok := ctx.(*AppContext); ok {
 		return requestCtx
 	}
@@ -61,13 +46,37 @@ func (ac *AppContext) Log() *Logger.Logger {
 
 func (ac *AppContext) ToContext() context.Context {
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, RequestIDKey, ac.RequestID)
-	ctx = context.WithValue(ctx, TraceIDKey, ac.TraceID)
-	ctx = context.WithValue(ctx, UserIDKey, ac.UserID)
-	ctx = context.WithValue(ctx, RequestTimeKey, ac.RequestTime)
-	ctx = context.WithValue(ctx, RequestMethodKey, ac.Method)
-	ctx = context.WithValue(ctx, RequestPathKey, ac.URL)
-	ctx = context.WithValue(ctx, RequestIPKey, ac.IP)
-	ctx = context.WithValue(ctx, RequestAgentKey, ac.UserAgent)
+	ctx = setContextIfNotEmpty(ctx, constant.RequestIDKey, ac.RequestID)
+	ctx = setContextIfNotEmpty(ctx, constant.TraceIDKey, ac.TraceID)
+	ctx = setContextIfNotEmpty(ctx, constant.UserIDKey, ac.UserID)
+	ctx = setContextIfNotZeroTime(ctx, constant.RequestTimeKey, ac.RequestTime)
+	ctx = setContextIfNotEmpty(ctx, constant.RequestMethodKey, ac.Method)
+	ctx = setContextIfNotEmpty(ctx, constant.RequestPathKey, ac.URL)
+	ctx = setContextIfNotEmpty(ctx, constant.RequestIPKey, ac.IP)
+	ctx = setContextIfNotEmpty(ctx, constant.RequestAgentKey, ac.UserAgent)
+	return ctx
+}
+
+// Helper function untuk mengecek string kosong
+func setContextIfNotEmpty(ctx context.Context, key interface{}, value string) context.Context {
+	if value != "" {
+		return context.WithValue(ctx, key, value)
+	}
+	return ctx
+}
+
+// Helper function untuk mengecek time.Time tidak nol
+func setContextIfNotZeroTime(ctx context.Context, key interface{}, value time.Time) context.Context {
+	if !value.IsZero() {
+		return context.WithValue(ctx, key, value)
+	}
+	return ctx
+}
+
+// Helper function untuk mengecek interface{} tidak nil
+func setContextIfNotNil(ctx context.Context, key interface{}, value interface{}) context.Context {
+	if value != nil {
+		return context.WithValue(ctx, key, value)
+	}
 	return ctx
 }

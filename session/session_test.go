@@ -1,17 +1,45 @@
 package session
 
 import (
+	"context"
+	"github.com/pkg/errors"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
-	Logger "github.com/ewinjuman/go-lib/logger"
+	Logger "github.com/ewinjuman/go-lib/v2/logger"
 	cmap "github.com/orcaman/concurrent-map"
 )
 
+var (
+	// instance singleton dari logger
+	instance *Logger.Logger
+	once     sync.Once
+)
+
+// InitLogger inisialisasi logger sekali saja
+func InitLogger(opts Logger.Options) {
+	once.Do(func() {
+		logger, err := Logger.New(opts)
+		if err != nil {
+			panic(err)
+		}
+		instance = logger
+	})
+}
+
+func GetLogger() *Logger.Logger {
+	if instance == nil {
+		// Default config jika belum diinisialisasi
+		InitLogger(Logger.DefaultOptions())
+	}
+	return instance
+}
 func TestNew(t *testing.T) {
 	type args struct {
 		logger *Logger.Logger
+		ctx    context.Context
 	}
 	tests := []struct {
 		name string
@@ -20,18 +48,18 @@ func TestNew(t *testing.T) {
 	}{
 		{
 			"try 1",
-			args{logger: Logger.New(Logger.Options{Stdout: true})},
+			args{logger: GetLogger(), ctx: Logger.NewContext()},
 			&Session{},
 		},
 		{
 			"try 2",
-			args{logger: Logger.New(Logger.Options{Stdout: true})},
+			args{logger: GetLogger(), ctx: Logger.NewContext()},
 			&Session{},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := New(tt.args.logger); got == nil {
+			if got := New(tt.args.ctx, tt.args.logger); got == nil {
 				t.Errorf("New() = %v, want %v", got, tt.want)
 			}
 		})
@@ -54,7 +82,7 @@ func TestSession_SetThreadID(t *testing.T) {
 	}{
 		{"set thread id",
 			fields{
-				Logger:   Logger.New(Logger.Options{Stdout: true}),
+				Logger:   Logger.GetLogger(),
 				ThreadID: "12345",
 			},
 			args{sessionID: "s12345"},
@@ -438,72 +466,6 @@ func TestSession_SetInstitutionID(t *testing.T) {
 	}
 }
 
-func TestSession_SetActionTo(t *testing.T) {
-	type fields struct {
-		ActionTo string
-	}
-	type args struct {
-		actionTo string
-	}
-	tests := []struct {
-		name   string
-		fields fields
-		args   args
-		want   *Session
-	}{
-		{"set Action To",
-			fields{
-				ActionTo: "Post Data",
-			},
-			args{actionTo: "Post Data User"},
-			&Session{ActionTo: "Post Data User"},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			session := &Session{
-				ActionTo: tt.fields.ActionTo,
-			}
-			if got := session.SetActionTo(tt.args.actionTo); !reflect.DeepEqual(got.ActionTo, tt.want.ActionTo) {
-				t.Errorf("SetActionTo() = %v, want %v", got.ActionTo, tt.want.ActionTo)
-			}
-		})
-	}
-}
-
-func TestSession_SetActionName(t *testing.T) {
-	type fields struct {
-		ActionName string
-	}
-	type args struct {
-		actionName string
-	}
-	tests := []struct {
-		name   string
-		fields fields
-		args   args
-		want   *Session
-	}{
-		{"set Action Name",
-			fields{
-				ActionName: "Save User",
-			},
-			args{actionName: "Save User B"},
-			&Session{ActionName: "Save User B"},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			session := &Session{
-				ActionName: tt.fields.ActionName,
-			}
-			if got := session.SetActionName(tt.args.actionName); !reflect.DeepEqual(got.ActionName, tt.want.ActionName) {
-				t.Errorf("SetActionName() = %v, want %v", got.ActionName, tt.want.ActionName)
-			}
-		})
-	}
-}
-
 func TestSession_SetPersonalIdentifier(t *testing.T) {
 	type fields struct {
 		PersonalId string
@@ -542,9 +504,10 @@ func TestSession_Get(t *testing.T) {
 		Map cmap.ConcurrentMap
 	}
 	type args struct {
-		getKey string
-		key    string
-		value  string
+		getKey       string
+		key          string
+		value        string
+		defaultValue interface{}
 	}
 	tests := []struct {
 		name     string
@@ -556,15 +519,15 @@ func TestSession_Get(t *testing.T) {
 		{
 			"get from map",
 			fields{Map: cmap.New()},
-			args{getKey: "name", key: "name", value: "Ewin"},
+			args{getKey: "name", key: "name", value: "Ewin", defaultValue: "Ewin"},
 			"Ewin",
 			false,
 		},
 		{
-			"get from map error",
+			"get from map and default",
 			fields{Map: cmap.New()},
-			args{getKey: "id", key: "name", value: "Ewin"},
-			nil,
+			args{getKey: "id", key: "name", value: "Ewin", defaultValue: "Ewin"},
+			"Ewin",
 			true,
 		},
 	}
@@ -575,11 +538,7 @@ func TestSession_Get(t *testing.T) {
 			session := &Session{
 				Map: tt.fields.Map,
 			}
-			gotData, err := session.Get(tt.args.getKey)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Get() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
+			gotData := session.Get(tt.args.getKey, tt.args.defaultValue)
 			if !reflect.DeepEqual(gotData, tt.wantData) {
 				t.Errorf("Get() gotData = %v, want %v", gotData, tt.wantData)
 			}
@@ -590,6 +549,7 @@ func TestSession_Get(t *testing.T) {
 func TestSession_Put(t *testing.T) {
 	type fields struct {
 		Map cmap.ConcurrentMap
+		ctx context.Context
 	}
 	type args struct {
 		key  string
@@ -602,14 +562,15 @@ func TestSession_Put(t *testing.T) {
 	}{
 		{
 			"Put to Map",
-			fields{Map: cmap.New()},
+			fields{Map: cmap.New(), ctx: Logger.NewContext()},
 			args{key: "name", data: "Ewin"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			session := &Session{
-				Map: tt.fields.Map,
+				Map:     tt.fields.Map,
+				Context: tt.fields.ctx,
 			}
 			session.Put(tt.args.key, tt.args.data)
 		})
@@ -619,6 +580,7 @@ func TestSession_Put(t *testing.T) {
 func TestSession_LogRequest(t *testing.T) {
 	type fields struct {
 		Logger  *Logger.Logger
+		ctx     context.Context
 		Request interface{}
 	}
 	type args struct {
@@ -633,25 +595,27 @@ func TestSession_LogRequest(t *testing.T) {
 		args   args
 	}{
 		{
-			"Write Log Request",
+			"Write logger Request",
 			fields{
-				Logger:  Logger.New(Logger.Options{Stdout: true}),
+				Logger:  GetLogger(),
+				ctx:     Logger.NewContext(),
 				Request: request{Id: 12},
 			},
-			args{message: []interface{}{"Log Request"}},
+			args{message: []interface{}{"logger Request"}},
 		},
 		{
-			"Write Log Request nil",
+			"Write logger Request nil",
 			fields{
-				Logger: Logger.New(Logger.Options{Stdout: true}),
+				Logger: GetLogger(), ctx: Logger.NewContext(),
 			},
-			args{message: []interface{}{"Log Request"}},
+			args{message: []interface{}{"logger Request"}},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			session := &Session{
 				Logger:  tt.fields.Logger,
+				Context: tt.fields.ctx,
 				Request: tt.fields.Request,
 			}
 			session.LogRequest(tt.args.message...)
@@ -662,6 +626,7 @@ func TestSession_LogRequest(t *testing.T) {
 func TestSession_LogResponse(t *testing.T) {
 	type fields struct {
 		Logger *Logger.Logger
+		ctx    context.Context
 	}
 	type args struct {
 		response interface{}
@@ -676,24 +641,27 @@ func TestSession_LogResponse(t *testing.T) {
 		args   args
 	}{
 		{
-			"Write Log Response nil",
+			"Write logger Response nil",
 			fields{
-				Logger: Logger.New(Logger.Options{Stdout: true}),
+				Logger: GetLogger(),
+				ctx:    Logger.NewContext(),
 			},
-			args{message: []interface{}{"Log Response"}},
+			args{message: []interface{}{"logger Response"}},
 		},
 		{
-			"Write Log Response not nil",
+			"Write logger Response not nil",
 			fields{
-				Logger: Logger.New(Logger.Options{Stdout: true}),
+				Logger: GetLogger(),
+				ctx:    Logger.NewContext(),
 			},
-			args{response: response{Id: "123"}, message: []interface{}{"Log Response"}},
+			args{response: response{Id: "123"}, message: []interface{}{"logger Response"}},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			session := &Session{
-				Logger: tt.fields.Logger,
+				Logger:  tt.fields.Logger,
+				Context: tt.fields.ctx,
 			}
 			session.LogResponse(tt.args.response, tt.args.message...)
 		})
@@ -703,6 +671,7 @@ func TestSession_LogResponse(t *testing.T) {
 func TestSession_LogRequestHttp(t *testing.T) {
 	type fields struct {
 		Logger  *Logger.Logger
+		ctx     context.Context
 		Request interface{}
 	}
 	type args struct {
@@ -721,9 +690,10 @@ func TestSession_LogRequestHttp(t *testing.T) {
 		args   args
 	}{
 		{
-			"Write Log Request HTTP",
+			"Write logger Request HTTP",
 			fields{
-				Logger:  Logger.New(Logger.Options{Stdout: true}),
+				Logger:  GetLogger(),
+				ctx:     Logger.NewContext(),
 				Request: request{Id: 12},
 			},
 			args{
@@ -733,9 +703,10 @@ func TestSession_LogRequestHttp(t *testing.T) {
 			},
 		},
 		{
-			"Write Log Request HTTP nil",
+			"Write logger Request HTTP nil",
 			fields{
-				Logger:  Logger.New(Logger.Options{Stdout: true}),
+				Logger:  GetLogger(),
+				ctx:     Logger.NewContext(),
 				Request: request{Id: 12},
 			},
 			args{
@@ -748,6 +719,7 @@ func TestSession_LogRequestHttp(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			session := &Session{
 				Logger:  tt.fields.Logger,
+				Context: tt.fields.ctx,
 				Request: tt.fields.Request,
 			}
 			session.LogRequestHttp(tt.args.url, tt.args.method, tt.args.body, tt.args.header, tt.args.params)
@@ -758,6 +730,7 @@ func TestSession_LogRequestHttp(t *testing.T) {
 func TestSession_LogResponseHttp(t *testing.T) {
 	type fields struct {
 		Logger       *Logger.Logger
+		ctx          context.Context
 		ErrorMessage string
 	}
 	type args struct {
@@ -766,7 +739,7 @@ func TestSession_LogResponseHttp(t *testing.T) {
 		url          string
 		method       string
 		body         interface{}
-		messageError []string
+		messageError error
 	}
 	type request struct {
 		Id int `json:"id"`
@@ -777,9 +750,10 @@ func TestSession_LogResponseHttp(t *testing.T) {
 		args   args
 	}{
 		{
-			"Write Log Response Http",
+			"Write logger Response Http",
 			fields{
-				Logger:       Logger.New(Logger.Options{Stdout: true}),
+				Logger:       GetLogger(),
+				ctx:          Logger.NewContext(),
 				ErrorMessage: "",
 			},
 			args{
@@ -790,9 +764,10 @@ func TestSession_LogResponseHttp(t *testing.T) {
 			},
 		},
 		{
-			"Write Log Response Http body nil",
+			"Write logger Response Http body nil",
 			fields{
-				Logger:       Logger.New(Logger.Options{Stdout: true}),
+				Logger:       GetLogger(),
+				ctx:          Logger.NewContext(),
 				ErrorMessage: "",
 			},
 			args{
@@ -802,16 +777,17 @@ func TestSession_LogResponseHttp(t *testing.T) {
 			},
 		},
 		{
-			"Write Log Response Http message error not nil",
+			"Write logger Response Http message error not nil",
 			fields{
-				Logger:       Logger.New(Logger.Options{Stdout: true}),
+				Logger:       GetLogger(),
+				ctx:          Logger.NewContext(),
 				ErrorMessage: "",
 			},
 			args{
 				url:          "http://v.com",
 				method:       "GET",
 				body:         request{Id: 123},
-				messageError: []string{"Error"},
+				messageError: errors.New("test error"),
 			},
 		},
 	}
@@ -819,9 +795,10 @@ func TestSession_LogResponseHttp(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			session := &Session{
 				Logger:       tt.fields.Logger,
+				Context:      tt.fields.ctx,
 				ErrorMessage: tt.fields.ErrorMessage,
 			}
-			session.LogResponseHttp(tt.args.responseTime, tt.args.code, tt.args.url, tt.args.method, tt.args.body, tt.args.messageError...)
+			session.LogResponseHttp(tt.args.responseTime, tt.args.code, tt.args.url, tt.args.method, tt.args.body, tt.args.messageError)
 		})
 	}
 }
@@ -829,6 +806,7 @@ func TestSession_LogResponseHttp(t *testing.T) {
 func TestSession_LogRequestGrpc(t *testing.T) {
 	type fields struct {
 		Logger  *Logger.Logger
+		ctx     context.Context
 		Request interface{}
 	}
 	type args struct {
@@ -847,9 +825,10 @@ func TestSession_LogRequestGrpc(t *testing.T) {
 		args   args
 	}{
 		{
-			"Write Log Request GRPC",
+			"Write logger Request GRPC",
 			fields{
-				Logger:  Logger.New(Logger.Options{Stdout: true}),
+				Logger:  GetLogger(),
+				ctx:     Logger.NewContext(),
 				Request: request{Id: 12},
 			},
 			args{
@@ -859,9 +838,10 @@ func TestSession_LogRequestGrpc(t *testing.T) {
 			},
 		},
 		{
-			"Write Log Request GRPC nil",
+			"Write logger Request GRPC nil",
 			fields{
-				Logger:  Logger.New(Logger.Options{Stdout: true}),
+				Logger:  GetLogger(),
+				ctx:     Logger.NewContext(),
 				Request: request{Id: 12},
 			},
 			args{
@@ -874,6 +854,7 @@ func TestSession_LogRequestGrpc(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			session := &Session{
 				Logger:  tt.fields.Logger,
+				Context: tt.fields.ctx,
 				Request: tt.fields.Request,
 			}
 			session.LogRequestGrpc(tt.args.url, tt.args.method, tt.args.body, tt.args.header)
@@ -884,6 +865,7 @@ func TestSession_LogRequestGrpc(t *testing.T) {
 func TestSession_LogResponseGrpc(t *testing.T) {
 	type fields struct {
 		Logger       *Logger.Logger
+		ctx          context.Context
 		ErrorMessage string
 	}
 	type args struct {
@@ -903,9 +885,10 @@ func TestSession_LogResponseGrpc(t *testing.T) {
 		args   args
 	}{
 		{
-			"Write Log Response GRPC",
+			"Write logger Response GRPC",
 			fields{
-				Logger:       Logger.New(Logger.Options{Stdout: true}),
+				Logger:       GetLogger(),
+				ctx:          Logger.NewContext(),
 				ErrorMessage: "",
 			},
 			args{
@@ -916,9 +899,10 @@ func TestSession_LogResponseGrpc(t *testing.T) {
 			},
 		},
 		{
-			"Write Log Response GRPC body nil",
+			"Write logger Response GRPC body nil",
 			fields{
-				Logger:       Logger.New(Logger.Options{Stdout: true}),
+				Logger:       GetLogger(),
+				ctx:          Logger.NewContext(),
 				ErrorMessage: "",
 			},
 			args{
@@ -928,9 +912,10 @@ func TestSession_LogResponseGrpc(t *testing.T) {
 			},
 		},
 		{
-			"Write Log Response GRPC message error not nil",
+			"Write logger Response GRPC message error not nil",
 			fields{
-				Logger:       Logger.New(Logger.Options{Stdout: true}),
+				Logger:       GetLogger(),
+				ctx:          Logger.NewContext(),
 				ErrorMessage: "",
 			},
 			args{
@@ -945,6 +930,7 @@ func TestSession_LogResponseGrpc(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			session := &Session{
 				Logger:       tt.fields.Logger,
+				Context:      tt.fields.ctx,
 				ErrorMessage: tt.fields.ErrorMessage,
 			}
 			session.LogResponseGrpc(tt.args.startProcessTime, tt.args.url, tt.args.method, tt.args.body)

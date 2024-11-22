@@ -11,11 +11,11 @@ golang base library
 ## How to use
 
 ```sh
-go get github.com/ewinjuman/go-lib
+go get github.com/ewinjuman/go-lib/v2
 ```
 - ### Error
     ```
-    import "github.com/ewinjuman/go-lib/error"
+    import "github.com/ewinjuman/go-lib/v2/error"
 
     err := error.New(400, "Status", "message Error")
     //or
@@ -24,7 +24,7 @@ go get github.com/ewinjuman/go-lib
 
 - ### Logger
     ```
-    import "github.com/ewinjuman/go-lib/logger"
+    import "github.com/ewinjuman/go-lib/v2/logger"
 
     logOption := logger.Options{
 		FileLocation:       "logs/",
@@ -38,7 +38,7 @@ go get github.com/ewinjuman/go-lib
     ```
 - ### Session
     ```
-    import "github.com/ewinjuman/go-lib/session"
+    import "github.com/ewinjuman/go-lib/v2/session"
 
     newSession := session.New(log)
     ```
@@ -55,7 +55,7 @@ go get github.com/ewinjuman/go-lib
     ```
 - ### Http Request
     ```
-    import REST "github.com/ewinjuman/go-lib/http"
+    import REST "github.com/ewinjuman/go-lib/v2/http"
 
     httpOption := REST.Options{
 		Timeout:   20,
@@ -75,8 +75,8 @@ go get github.com/ewinjuman/go-lib
 - ### Helper
     ```
     import ( 
-        "github.com/ewinjuman/go-lib/helper"
-        "github.com/ewinjuman/go-lib/convert"
-        "github.com/ewinjuman/go-lib/helper/codeGenerator"
+        "github.com/ewinjuman/go-lib/v2/helper"
+        "github.com/ewinjuman/go-lib/v2/convert"
+        "github.com/ewinjuman/go-lib/v2/helper/codeGenerator"
     )
     ```

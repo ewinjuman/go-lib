@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	Session "github.com/ewinjuman/go-lib/session"
+	Session "github.com/ewinjuman/go-lib/v2/session"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )

@@ -5,12 +5,14 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
-	Error "github.com/ewinjuman/go-lib/error"
-	"github.com/ewinjuman/go-lib/helper/convert"
-	Session "github.com/ewinjuman/go-lib/session"
+	Error "github.com/ewinjuman/go-lib/v2/error"
+	Session "github.com/ewinjuman/go-lib/v2/session"
+	"github.com/ewinjuman/go-lib/v2/utils/convert"
 	"github.com/go-resty/resty/v2"
 )
 
@@ -22,6 +24,7 @@ type RequestConfig struct {
 	Path       string
 	Header     http.Header
 	Payload    interface{}
+	PathParams map[string]string
 	QueryParam map[string]string
 	File       []MultipartData
 }
@@ -29,18 +32,20 @@ type RequestConfig struct {
 type RestClient interface {
 	DefaultHeader(username, password string) http.Header
 	BasicAuth(username, password string) string
-	Execute(session *Session.Session, host string, path string, method string, headers http.Header, payload interface{}, queryParam map[string]string, file []MultipartData) (body []byte, statusCode int, err error)
-	//Request(request RequestConfig) (body []byte, statusCode int, err error)
-	//Execute(session *Session.Session, host string, path string, method string, headers http.Header, payload interface{}, PathParams map[string]string, queryParam map[string]string, file []MultipartData) (body []byte, statusCode int, err error)
+	Execute(session *Session.Session, method Method, host string, path string, headers http.Header, payload interface{}, pathParams map[string]string, queryParam map[string]string, file []MultipartData) (body []byte, statusCode int, err error)
+}
+
+func (v Method) String() string {
+	return string(v)
 }
 
 const (
-	MethodPost   Method = "POST"
-	MethodGet    Method = "GET"
-	MethodPut    Method = "PUT"
-	MethodDelete Method = "DELETE"
-	MethodPatch  Method = "PATCH"
-	MethodOption Method = "OPTION"
+	MethodPost    Method = "POST"
+	MethodGet     Method = "GET"
+	MethodPut     Method = "PUT"
+	MethodDelete  Method = "DELETE"
+	MethodPatch   Method = "PATCH"
+	MethodOptions Method = "OPTIONS"
 )
 
 func New(options Options) RestClient {
@@ -76,7 +81,10 @@ func (c *client) BasicAuth(username, password string) string {
 	return base64.StdEncoding.EncodeToString([]byte(auth))
 }
 
-func (c *client) Execute(session *Session.Session, host string, path string, method string, headers http.Header, payload interface{}, queryParam map[string]string, file []MultipartData) (body []byte, statusCode int, err error) {
+func (c *client) Execute(session *Session.Session, method Method, host string, path string, headers http.Header, payload interface{}, pathParams map[string]string, queryParam map[string]string, file []MultipartData) (body []byte, statusCode int, err error) {
+	for key, value := range pathParams {
+		path = strings.ReplaceAll(path, fmt.Sprintf(":%s", key), value)
+	}
 	url := host + path
 	request := c.httpClient.R()
 
@@ -97,12 +105,12 @@ func (c *client) Execute(session *Session.Session, host string, path string, met
 	switch request.Header.Get("Content-Type") {
 	case "application/json":
 		request.SetBody(payload)
-		session.LogRequestHttp(url, method, request.Body, request.Header, request.QueryParam)
+		session.LogRequestHttp(url, method.String(), request.Body, request.Header, request.QueryParam)
 	case "application/x-www-form-urlencoded", "multipart/form-data":
 		var formData map[string]string
 		convert.ObjectToObject(payload, &formData)
 		request.SetFormData(formData)
-		session.LogRequestHttp(url, method, request.FormData, request.Header, request.QueryParam)
+		session.LogRequestHttp(url, method.String(), request.FormData, request.Header, request.QueryParam)
 		if request.Header.Get("Content-Type") == "multipart/form-data" {
 			for _, val := range file {
 				request.SetFileReader(val.Key, val.Value, val.File)
@@ -114,27 +122,26 @@ func (c *client) Execute(session *Session.Session, host string, path string, met
 	var result *resty.Response
 	var errExecute error
 	switch method {
-	case http.MethodPost:
+	case MethodPost:
 		result, errExecute = request.Post(url)
-	case http.MethodDelete:
+	case MethodDelete:
 		result, errExecute = request.Delete(url)
-	case http.MethodGet:
+	case MethodGet:
 		result, errExecute = request.Get(url)
-	case http.MethodPut:
+	case MethodPut:
 		result, errExecute = request.Put(url)
-	case http.MethodOptions:
+	case MethodOptions:
 		result, errExecute = request.Options(url)
-	case http.MethodPatch:
+	case MethodPatch:
 		result, errExecute = request.Patch(url)
 	}
-
 	responseTime := result.Time()
 	// Check errExecute HTTP
 	if errExecute != nil {
 		if result != nil {
 			body = result.Body()
 		}
-		session.LogResponseHttp(responseTime, statusCode, url, method, body, errExecute.Error())
+		session.LogResponseHttp(responseTime, statusCode, url, method.String(), body, errExecute)
 
 		err = errExecute
 		if Error.IsTimeout(errExecute) {
@@ -156,18 +163,18 @@ func (c *client) Execute(session *Session.Session, host string, path string, met
 	case "application/json":
 		var result interface{}
 		json.Unmarshal(body, &result)
-		session.LogResponseHttp(responseTime, statusCode, url, method, result)
+		session.LogResponseHttp(responseTime, statusCode, url, method.String(), result, nil)
 	case "text/html":
-		session.LogResponseHttp(responseTime, statusCode, url, method, string(body))
+		session.LogResponseHttp(responseTime, statusCode, url, method.String(), string(body), nil)
 	case "application/octet-stream":
-		session.LogResponseHttp(responseTime, statusCode, url, method, "")
+		session.LogResponseHttp(responseTime, statusCode, url, method.String(), "", nil)
 	default:
 		var result interface{}
 		er := json.Unmarshal(body, &result)
 		if er != nil {
-			session.LogResponseHttp(responseTime, statusCode, url, method, string(body))
+			session.LogResponseHttp(responseTime, statusCode, url, method.String(), string(body), nil)
 		} else {
-			session.LogResponseHttp(responseTime, statusCode, url, method, result)
+			session.LogResponseHttp(responseTime, statusCode, url, method.String(), result, nil)
 		}
 	}
 

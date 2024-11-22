@@ -3,7 +3,7 @@ package grpc
 //import (
 //"context"
 //Config "go-otto-users/utils/config"
-//Logger "go-otto-users/utils/logger"
+//logger "go-otto-users/utils/logger"
 //Session "go-otto-users/utils/session"
 //"google.golang.org/grpc"
 //"google.golang.org/grpc/metadata"
@@ -16,7 +16,7 @@ package grpc
 //
 //func middleware() grpc.UnaryServerInterceptor {
 //	return func(ctx context.Context, request interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
-//		log := Logger.New(Config.Config.Logger)
+//		log := logger.New(Config.Config.logger)
 //		//Example for get metadata
 //		md, ok := metadata.FromIncomingContext(ctx)
 //		if !ok {

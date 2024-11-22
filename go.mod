@@ -1,10 +1,11 @@
-module github.com/ewinjuman/go-lib
+module github.com/ewinjuman/go-lib/v2
 
 go 1.22.0
 
 require (
 	github.com/go-resty/resty/v2 v2.11.0
 	github.com/gofiber/fiber/v2 v2.52.2
+	github.com/google/uuid v1.6.0
 	github.com/json-iterator/go v1.1.12
 	github.com/lestrrat-go/file-rotatelogs v2.4.0+incompatible
 	github.com/orcaman/concurrent-map v1.0.0
@@ -14,12 +15,12 @@ require (
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.21.0
 	google.golang.org/grpc v1.62.1
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
 require (
 	github.com/andybalholm/brotli v1.0.5 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/jonboulle/clockwork v0.4.0 // indirect
 	github.com/klauspost/compress v1.17.0 // indirect
 	github.com/lestrrat-go/strftime v1.0.6 // indirect

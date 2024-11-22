@@ -381,23 +381,23 @@ func (l *Logger) convertToZapFields(fields []Field) []zap.Field {
 
 // Logger methods
 func (l *Logger) LogDebug(ctx context.Context, msg string, fields ...Field) {
-	l.Debug(ctx, msg, l.convertToZapFields(fields)...)
+	l.WithContext(ctx).Debug(msg, l.convertToZapFields(fields)...)
 }
 
 func (l *Logger) LogInfo(ctx context.Context, msg string, fields ...Field) {
-	l.Info(ctx, msg, l.convertToZapFields(fields)...)
+	l.WithContext(ctx).Info(msg, l.convertToZapFields(fields)...)
 }
 
 func (l *Logger) LogWarn(ctx context.Context, msg string, fields ...Field) {
-	l.Warn(ctx, msg, l.convertToZapFields(fields)...)
+	l.WithContext(ctx).Warn(msg, l.convertToZapFields(fields)...)
 }
 
 func (l *Logger) LogError(ctx context.Context, msg string, fields ...Field) {
-	l.Error(ctx, msg, l.convertToZapFields(fields)...)
+	l.WithContext(ctx).Error(msg, l.convertToZapFields(fields)...)
 }
 
 func (l *Logger) LogFatal(ctx context.Context, msg string, fields ...Field) {
-	l.Fatal(ctx, msg, l.convertToZapFields(fields)...)
+	l.WithContext(ctx).Fatal(msg, l.convertToZapFields(fields)...)
 }
 
 // maskComplexValue melakukan masking pada struktur data kompleks

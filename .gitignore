@@ -2,3 +2,5 @@
 .idea/go-lib.iml
 .idea/modules.xml
 .idea/vcs.xml
+/main.go
+/log/*

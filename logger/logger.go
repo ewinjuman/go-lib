@@ -39,6 +39,7 @@ type Options struct {
 	MaxAge        int               // Umur maksimal file log dalam hari
 	Compress      bool              // Kompres file backup
 	Level         Level             // Minimum log level
+	FunctionKey   string            // key jika ingin caller function di log
 	MaskingPaths  []string          // Path JSON yang perlu dimasking
 	DefaultFields map[string]string // Fields default yang selalu ada di log
 	EnableTrace   bool              // Enable stack trace untuk error
@@ -63,7 +64,7 @@ func DefaultOptions() Options {
 		Stdout:      true,
 		MaxSize:     100,
 		MaxBackups:  7,
-		MaxAge:      30,
+		MaxAge:      24,
 		Compress:    true,
 		Level:       InfoLevel,
 		EnableTrace: true,
@@ -107,6 +108,10 @@ func New(opts Options) (*Logger, error) {
 		EncodeCaller:   zapcore.ShortCallerEncoder,
 	}
 
+	if opts.FunctionKey != zapcore.OmitKey {
+		encoderConfig.FunctionKey = opts.FunctionKey
+	}
+
 	// Level
 	var zapLevel zapcore.Level
 	switch opts.Level {
@@ -141,7 +146,7 @@ func New(opts Options) (*Logger, error) {
 
 	// File output
 	if opts.Filename != "" {
-		opts.Filename = getLogFilename(opts.Filename)
+		//opts.Filename = getLogFilename(opts.Filename)
 		if err := os.MkdirAll(filepath.Dir(opts.Filename), 0744); err != nil {
 			return nil, fmt.Errorf("failed to create log directory: %w", err)
 		}
@@ -260,7 +265,7 @@ func (l *Logger) maskSensitiveData(fields ...zap.Field) []zap.Field {
 }
 
 // Logger methods
-func (l *Logger) Debug(ctx context.Context, msg string, fields ...zap.Field) {
+func (l *Logger) debug(ctx context.Context, msg string, fields ...zap.Field) {
 	l.WithContext(ctx).Debug(msg, l.maskSensitiveData(fields...)...)
 }
 

@@ -6,10 +6,13 @@ import (
 	Logger "github.com/ewinjuman/go-lib/v2/logger"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	Map "github.com/orcaman/concurrent-map"
 	"time"
 )
 
 type AppContext struct {
+	Context            context.Context
+	Map                Map.ConcurrentMap
 	RequestID          string
 	TraceID            string
 	RequestTime        time.Time
@@ -29,6 +32,64 @@ func New(log *Logger.Logger) *AppContext {
 		RequestTime: time.Now(),
 		logger:      log,
 	}
+}
+
+func (app *AppContext) SetTraceID(traceID string) *AppContext {
+	app.TraceID = traceID
+	return app
+}
+
+func (app *AppContext) SetUserID(userID string) *AppContext {
+	app.UserID = userID
+	return app
+}
+
+func (app *AppContext) SetRequestID(requestID string) *AppContext {
+	app.RequestID = requestID
+	return app
+}
+
+func (app *AppContext) SetRequestTime(requestTime time.Time) *AppContext {
+	app.RequestTime = requestTime
+	return app
+}
+
+func (app *AppContext) SetLogger(logger *Logger.Logger) *AppContext {
+	app.logger = logger
+	return app
+}
+
+func (app *AppContext) SetIP(ip string) *AppContext {
+	app.IP = ip
+	return app
+}
+
+func (app *AppContext) SetUserAgent(userAgent string) *AppContext {
+	app.UserAgent = userAgent
+	return app
+}
+
+func (app *AppContext) SetPort(port int) *AppContext {
+	app.Port = port
+	return app
+}
+
+func (app *AppContext) SetSrcIP(srcIP string) *AppContext {
+	app.SrcIP = srcIP
+	return app
+}
+
+func (app *AppContext) SetMethod(method string) *AppContext {
+	app.Method = method
+	return app
+}
+func (app *AppContext) SetHeader(header interface{}) *AppContext {
+	app.Header = header
+	return app
+}
+func (app *AppContext) SetRequest(request interface{}) *AppContext {
+	app.Request = request
+	return app
 }
 
 // FromFiber mengambil RequestContext dari fiber.Ctx

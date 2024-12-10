@@ -4,7 +4,7 @@ import "testing"
 
 func TestGeneratePassword(t *testing.T) {
 	type args struct {
-		p string
+		password string
 	}
 	tests := []struct {
 		name     string
@@ -14,14 +14,14 @@ func TestGeneratePassword(t *testing.T) {
 		{
 			"Generate password",
 			args{
-				p: "password",
+				password: "password",
 			},
 			true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := GeneratePassword(tt.args.p); (got != "") != tt.notEmpty {
+			if got := GeneratePassword(tt.args.password); (got != "") != tt.notEmpty {
 				t.Errorf("GeneratePassword() = %v, want %v", (got != ""), tt.notEmpty)
 			}
 		})

@@ -59,8 +59,8 @@ func ReadLines(path string) ([]string, error) {
 //	valid := validation.Validation{}
 //	if v := valid.Numeric(newMobilePhoneNumber, "Mobile Phone Number"); !v.Ok {
 //		println(newMobilePhoneNumber)
-//		println(v.Error.Message)
-//		err = Error.New(http.StatusBadRequest, "FAILED", "Mobile Phone Number Tidak Valid")
+//		println(v.error.Message)
+//		err = error.New(http.StatusBadRequest, "FAILED", "Mobile Phone Number Tidak Valid")
 //		return
 //	}
 //

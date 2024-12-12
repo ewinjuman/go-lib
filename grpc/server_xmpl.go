@@ -1,7 +1,7 @@
 package grpc
 
 //import (
-//"context"
+//"appContext"
 //Config "go-otto-users/utils/config"
 //logger "go-otto-users/utils/logger"
 //Session "go-otto-users/utils/session"
@@ -15,7 +15,7 @@ package grpc
 //type server struct{}
 //
 //func middleware() grpc.UnaryServerInterceptor {
-//	return func(ctx context.Context, request interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+//	return func(ctx appContext.Context, request interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
 //		log := logger.New(Config.Config.logger)
 //		//Example for get metadata
 //		md, ok := metadata.FromIncomingContext(ctx)
@@ -34,17 +34,17 @@ package grpc
 //			SetMethod("GRPC").
 //			SetHeader(md)
 //		session.LogRequest(nil)
-//		c := context.WithValue(ctx, Session.AppSession, session)
+//		c := appContext.WithValue(ctx, Session.AppSession, session)
 //
 //		// TODO here, if Authentication is enable
-//		//errAuthenticated := status.Error(codes.Code(401), "Unauthenticated message")
+//		//errAuthenticated := status.error(codes.Code(401), "Unauthenticated message")
 //		//if errAuthenticated != nil {
-//		//	session.LogResponse(nil, errAuthenticated.Error())
+//		//	session.LogResponse(nil, errAuthenticated.error())
 //		//	return nil, errAuthenticated
 //		//}
 //		h, err := handler(c, request)
 //		if err != nil {
-//			session.LogResponse(h, err.Error())
+//			session.LogResponse(h, err.error())
 //		} else {
 //			session.LogResponse(h, nil)
 //		}
@@ -68,7 +68,7 @@ package grpc
 //}
 //
 //func UnaryClientInterceptor() grpc.UnaryClientInterceptor {
-//	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+//	return func(ctx appContext.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 //		err := invoker(ctx, method, req, reply, cc, opts...)
 //		return err
 //	}

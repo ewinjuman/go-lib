@@ -22,7 +22,7 @@ const (
 	FailedStatus     = "FAILED"
 	UndefinedStatus  = "FAILED"
 	ContinueStatus   = "CONTINUE"
-	UndefinedMessage = "Internal Server Error"
+	UndefinedMessage = "Internal Server error"
 )
 
 func New(errorCode int, status, message string) error {
@@ -104,7 +104,7 @@ func ParseError(err error) *ApplicationError {
 	}
 }
 
-// NewError creates a new Error instance with an optional message
+// NewError creates a new error instance with an optional message
 func NewError(code int, status string, message ...string) error {
 	err := &ApplicationError{
 		ErrorCode: code,
@@ -184,7 +184,7 @@ var statusMessage = []string{
 	431: "Request Header Fields Too Large", // StatusRequestHeaderFieldsTooLarge
 	451: "Unavailable For Legal Reasons",   // StatusUnavailableForLegalReasons
 
-	500: "Internal Server Error",           // StatusInternalServerError
+	500: "Internal Server error",           // StatusInternalServerError
 	501: "Not Implemented",                 // StatusNotImplemented
 	502: "Bad Gateway",                     // StatusBadGateway
 	503: "Service Unavailable",             // StatusServiceUnavailable
@@ -209,7 +209,7 @@ func (e *deadlineExceededError) Timeout() bool   { return e.timeout }
 func (e *deadlineExceededError) Temporary() bool { return true }
 
 func DeadlineExceededError(message ...string) error {
-	defaultMessage := "context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+	defaultMessage := "appContext deadline exceeded (Client.Timeout exceeded while awaiting headers)"
 	if len(message) > 0 {
 		defaultMessage = message[0]
 	}

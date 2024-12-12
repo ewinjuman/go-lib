@@ -4,3 +4,5 @@
 .idea/vcs.xml
 /main.go
 /log/*
+
+*.log

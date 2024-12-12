@@ -18,8 +18,8 @@ func TestGetCode(t *testing.T) {
 		args args
 		want int
 	}{
-		{"Custom Error", args{err: NewError(451, "FAILED", "set error pending")}, 451},
-		{"Error", args{err: errors.New("set error")}, 500},
+		{"Custom error", args{err: NewError(451, "FAILED", "set error pending")}, 451},
+		{"error", args{err: errors.New("set error")}, 500},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -39,38 +39,38 @@ func TestParseError(t *testing.T) {
 		args       args
 		wantResult *ApplicationError
 	}{
-		{"Custom Error", args{err: NewError(451, "FAILED", "set error pending")}, &ApplicationError{
+		{"Custom error", args{err: NewError(451, "FAILED", "set error pending")}, &ApplicationError{
 			ErrorCode: 451,
 			Status:    FailedStatus,
 			Message:   "set error pending",
 		}},
-		{"Error", args{err: errors.New("set error")}, &ApplicationError{
+		{"error", args{err: errors.New("set error")}, &ApplicationError{
 			ErrorCode: http.StatusInternalServerError,
 			Status:    FailedStatus,
 			Message:   "set error",
 		}},
-		{"Error nil", args{err: nil}, nil},
-		{"Custom Error no message", args{err: NewError(451, "FAILED")}, &ApplicationError{
+		{"error nil", args{err: nil}, nil},
+		{"Custom error no message", args{err: NewError(451, "FAILED")}, &ApplicationError{
 			ErrorCode: 451,
 			Status:    FailedStatus,
 			Message:   "Unavailable For Legal Reasons",
 		}},
-		{"Custom Error no message and no code", args{err: NewError(600, "FAILED")}, &ApplicationError{
+		{"Custom error no message and no code", args{err: NewError(600, "FAILED")}, &ApplicationError{
 			ErrorCode: 600,
 			Status:    FailedStatus,
 			Message:   UndefinedMessage,
 		}},
-		{"Custom Error v1", args{err: New(403, "FAILED", "error v1")}, &ApplicationError{
+		{"Custom error v1", args{err: New(403, "FAILED", "error v1")}, &ApplicationError{
 			ErrorCode: 403,
 			Status:    FailedStatus,
 			Message:   "error v1",
 		}},
-		{"rpc Error", args{err: status.Error(451, "error rpc gan")}, &ApplicationError{
+		{"rpc error", args{err: status.Error(451, "error rpc gan")}, &ApplicationError{
 			ErrorCode: 451,
 			Status:    FailedStatus,
 			Message:   "error rpc gan",
 		}},
-		{"rpc Error", args{err: status.Error(11, "error rpc gan")}, &ApplicationError{
+		{"rpc error", args{err: status.Error(11, "error rpc gan")}, &ApplicationError{
 			ErrorCode: 413,
 			Status:    FailedStatus,
 			Message:   "error rpc gan",

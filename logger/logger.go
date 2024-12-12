@@ -30,20 +30,22 @@ const (
 
 // Options untuk konfigurasi logger
 type Options struct {
-	AppName       string            // Nama aplikasi
-	Environment   string            // Environment (dev/staging/prod)
-	Stdout        bool              // Logger ke console
-	Filename      string            // Nama file log
-	MaxSize       int               // Ukuran maksimal file dalam MB
-	MaxBackups    int               // Jumlah backup file yang disimpan
-	MaxAge        int               // Umur maksimal file log dalam hari
-	Compress      bool              // Kompres file backup
-	Level         Level             // Minimum log level
-	FunctionKey   string            // key jika ingin caller function di log
-	MaskingPaths  []string          // Path JSON yang perlu dimasking
-	DefaultFields map[string]string // Fields default yang selalu ada di log
-	EnableTrace   bool              // Enable stack trace untuk error
-	Development   bool              // Mode development untuk pretty print
+	AppName        string            // Nama aplikasi
+	Environment    string            // Environment (dev/staging/prod)
+	Stdout         bool              // Logger ke console
+	Write          bool              // Logger ke file
+	Filename       string            // Nama file log
+	MaxSize        int               // Ukuran maksimal file dalam MB
+	MaxBackups     int               // Jumlah backup file yang disimpan
+	MaxAge         int               // Umur maksimal file log dalam hari
+	Compress       bool              // Kompres file backup
+	Level          Level             // Minimum log level
+	FunctionKey    string            // key jika ingin caller function di log
+	MaskingPaths   []string          // key param JSON yang perlu dimasking
+	RedactionPaths []string          // key param yang perlu redaction
+	DefaultFields  map[string]string // Fields default yang selalu ada di log
+	EnableTrace    bool              // Enable stack trace untuk error
+	Development    bool              // Mode development untuk pretty print
 }
 
 // Logger struct utama
@@ -51,13 +53,14 @@ type Logger struct {
 	sync.RWMutex
 	logger        *zap.Logger
 	maskingPaths  []string
+	redactionPath []string
 	defaultFields map[string]string
 	options       Options
 }
 
 // DefaultOptions mengembalikan default configuration
 func DefaultOptions() Options {
-	hostname, _ := os.Hostname()
+	//hostname, _ := os.Hostname()
 	return Options{
 		AppName:     "app",
 		Environment: "development",
@@ -68,10 +71,6 @@ func DefaultOptions() Options {
 		Compress:    true,
 		Level:       InfoLevel,
 		EnableTrace: true,
-		DefaultFields: map[string]string{
-			"hostname": hostname,
-			"app":      "app",
-		},
 	}
 }
 
@@ -95,7 +94,7 @@ func New(opts Options) (*Logger, error) {
 		TimeKey:       "timestamp",
 		LevelKey:      "level",
 		NameKey:       "logger",
-		CallerKey:     "caller",
+		CallerKey:     zapcore.OmitKey,
 		FunctionKey:   zapcore.OmitKey,
 		MessageKey:    "message",
 		StacktraceKey: "stacktrace",
@@ -145,7 +144,7 @@ func New(opts Options) (*Logger, error) {
 	}
 
 	// File output
-	if opts.Filename != "" {
+	if opts.Filename != "" && opts.Write {
 		//opts.Filename = getLogFilename(opts.Filename)
 		if err := os.MkdirAll(filepath.Dir(opts.Filename), 0744); err != nil {
 			return nil, fmt.Errorf("failed to create log directory: %w", err)
@@ -188,19 +187,14 @@ func New(opts Options) (*Logger, error) {
 	}
 
 	return &Logger{
-		logger:       zapLogger,
-		maskingPaths: opts.MaskingPaths,
-		options:      opts,
+		logger:        zapLogger,
+		maskingPaths:  opts.MaskingPaths,
+		redactionPath: opts.RedactionPaths,
+		options:       opts,
 	}, nil
 }
 
-func getLogFilename(basePath string) string {
-	return fmt.Sprintf("%s-%s.log",
-		strings.TrimSuffix(basePath, ".log"),
-		time.Now().Format("2006-01-02"))
-}
-
-// WithContext menambahkan context ke log entry
+// WithContext menambahkan appContext ke log entry
 func (l *Logger) WithContext(ctx context.Context) *zap.Logger {
 	fields := []zap.Field{}
 
@@ -237,24 +231,41 @@ func (l *Logger) maskSensitiveData(fields ...zap.Field) []zap.Field {
 		//maskedFields[i] = l.maskComplexValue(field.Interface, field.Key)
 		// Check if field needs masking
 		needsMasking := false
+		needsRedaction := false
+		for _, path := range l.redactionPath {
+			if strings.Contains(field.Key, path) {
+				needsRedaction = true
+				break
+			}
+		}
+
 		for _, path := range l.maskingPaths {
+			if needsRedaction {
+				break
+			}
 			if strings.Contains(field.Key, path) {
 				needsMasking = true
 				break
 			}
 		}
 
-		if needsMasking && field.Type == zapcore.StringType {
+		if (needsMasking || needsRedaction) && field.Type == zapcore.StringType {
+
 			// Mask value keeping first and last 4 chars
 			value := field.String
-			if len(value) > 8 && len(value) <= 50 {
-				masked := value[:4] + strings.Repeat("*", len(value)-8) + value[len(value)-4:]
+			if needsRedaction {
+				println(field.Key)
+				maskedFields[i] = zap.String(field.Key, "[REDACTED]")
+			} else if isValidEmail(value) {
+				maskedFields[i] = zap.String(field.Key, maskEmail(value))
+			} else if len(value) > 8 && len(value) <= 50 {
+				masked := strings.Repeat("*", len(value)-4) + value[len(value)-4:]
 				maskedFields[i] = zap.String(field.Key, masked)
 			} else if len(value) > 50 {
-				masked := value[:4] + strings.Repeat("*", 40) + value[len(value)-4:]
+				masked := strings.Repeat("*", 40) + value[len(value)-4:]
 				maskedFields[i] = zap.String(field.Key, masked)
 			} else {
-				maskedFields[i] = zap.String(field.Key, "****")
+				maskedFields[i] = zap.String(field.Key, strings.Repeat("*", len(value)))
 			}
 		} else {
 			maskedFields[i] = zap.Any(field.Key, l.maskComplexValue(field.Interface, field.Key))
@@ -269,15 +280,15 @@ func (l *Logger) debug(ctx context.Context, msg string, fields ...zap.Field) {
 	l.WithContext(ctx).Debug(msg, l.maskSensitiveData(fields...)...)
 }
 
-func (l *Logger) Info(ctx context.Context, msg string, fields ...zap.Field) {
+func (l *Logger) info(ctx context.Context, msg string, fields ...zap.Field) {
 	l.WithContext(ctx).Info(msg, l.maskSensitiveData(fields...)...)
 }
 
-func (l *Logger) Warn(ctx context.Context, msg string, fields ...zap.Field) {
+func (l *Logger) warn(ctx context.Context, msg string, fields ...zap.Field) {
 	l.WithContext(ctx).Warn(msg, l.maskSensitiveData(fields...)...)
 }
 
-func (l *Logger) Error(ctx context.Context, msg string, fields ...zap.Field) {
+func (l *Logger) error(ctx context.Context, msg string, fields ...zap.Field) {
 	// Add stack trace for errors
 	if l.options.EnableTrace {
 		fields = append(fields, zap.String("stack_trace", getStackTrace()))
@@ -285,7 +296,7 @@ func (l *Logger) Error(ctx context.Context, msg string, fields ...zap.Field) {
 	l.WithContext(ctx).Error(msg, l.maskSensitiveData(fields...)...)
 }
 
-func (l *Logger) Fatal(ctx context.Context, msg string, fields ...zap.Field) {
+func (l *Logger) fatal(ctx context.Context, msg string, fields ...zap.Field) {
 	if l.options.EnableTrace {
 		fields = append(fields, zap.String("stack_trace", getStackTrace()))
 	}
@@ -376,23 +387,23 @@ func (l *Logger) convertToZapFields(fields []Field) []zap.Field {
 }
 
 // Logger methods
-func (l *Logger) LogDebug(ctx context.Context, msg string, fields ...Field) {
+func (l *Logger) Debug(ctx context.Context, msg string, fields ...Field) {
 	l.WithContext(ctx).Debug(msg, l.convertToZapFields(fields)...)
 }
 
-func (l *Logger) LogInfo(ctx context.Context, msg string, fields ...Field) {
+func (l *Logger) Info(ctx context.Context, msg string, fields ...Field) {
 	l.WithContext(ctx).Info(msg, l.convertToZapFields(fields)...)
 }
 
-func (l *Logger) LogWarn(ctx context.Context, msg string, fields ...Field) {
+func (l *Logger) Warn(ctx context.Context, msg string, fields ...Field) {
 	l.WithContext(ctx).Warn(msg, l.convertToZapFields(fields)...)
 }
 
-func (l *Logger) LogError(ctx context.Context, msg string, fields ...Field) {
+func (l *Logger) Error(ctx context.Context, msg string, fields ...Field) {
 	l.WithContext(ctx).Error(msg, l.convertToZapFields(fields)...)
 }
 
-func (l *Logger) LogFatal(ctx context.Context, msg string, fields ...Field) {
+func (l *Logger) Fatal(ctx context.Context, msg string, fields ...Field) {
 	l.WithContext(ctx).Fatal(msg, l.convertToZapFields(fields)...)
 }
 
@@ -499,15 +510,24 @@ func (l *Logger) maskStringIfNeeded(key string, value string) string {
 	// Ubah key ke lowercase untuk case-insensitive matching
 	keyLower := strings.ToLower(key)
 
+	for _, path := range l.redactionPath {
+		if strings.Contains(keyLower, strings.ToLower(path)) {
+			return "[REDACTED]"
+		}
+	}
+
 	for _, path := range l.maskingPaths {
 
 		if strings.Contains(keyLower, strings.ToLower(path)) {
-			if len(value) > 8 && len(value) <= 50 {
-				return value[:4] + strings.Repeat("*", len(value)-8) + value[len(value)-4:]
-			} else if len(value) > 50 {
-				return value[:4] + strings.Repeat("*", 40) + value[len(value)-4:]
+			if isValidEmail(value) {
+				return maskEmail(value)
 			}
-			return "****"
+			if len(value) > 8 && len(value) <= 50 {
+				return strings.Repeat("*", len(value)-4) + value[len(value)-4:]
+			} else if len(value) > 50 {
+				return strings.Repeat("*", 40) + value[len(value)-4:]
+			}
+			return strings.Repeat("*", len(value))
 		}
 	}
 	return value
@@ -515,14 +535,14 @@ func (l *Logger) maskStringIfNeeded(key string, value string) string {
 
 func (l *Logger) Printf(s string, v ...interface{}) {
 	if len(v) == 4 {
-		l.Info(context.Background(), "",
+		l.info(context.Background(), "",
 			zap.String("query", v[3].(string)),
 			zap.String("duration ", fmt.Sprintf("%.3fms", v[1].(float64))),
 			zap.Int64("affected-rows", v[2].(int64)),
 			zap.String("source", v[0].(string)),
 		)
 	} else {
-		l.Info(context.Background(), "",
+		l.info(context.Background(), "",
 			zap.Any("value", v),
 		)
 	}
@@ -535,7 +555,7 @@ func (l *Logger) Print(v ...interface{}) {
 	case "sql":
 		delimiter := "/"
 		rightOfDelimiter := strings.Join(strings.Split(v[1].(string), delimiter)[4:], delimiter)
-		l.Info(context.Background(), "",
+		l.info(context.Background(), "",
 			zap.String("query", v[3].(string)),
 			zap.Any("values", v[4]),
 			zap.Float64("duration", float64(v[2].(time.Duration))/float64(time.Millisecond)),
@@ -545,14 +565,14 @@ func (l *Logger) Print(v ...interface{}) {
 	default:
 		delimiter := "/"
 		rightOfDelimiter := strings.Join(strings.Split(v[1].(string), delimiter)[4:], delimiter)
-		l.Info(context.Background(), "",
+		l.info(context.Background(), "",
 			zap.Any("values", v[2:]),
 			zap.String("source", rightOfDelimiter),
 		)
 	}
 }
 
-// NewContext contoh untuk membuat context baru dengan request ID dan trace ID
+// NewContext contoh untuk membuat appContext baru dengan request ID dan trace ID
 func NewContext() context.Context {
 	ctx := context.Background()
 	requestID := uuid.New().String()
@@ -606,6 +626,9 @@ func ExampleUsage() {
 			"credit_card",
 			"ssn",
 		},
+		RedactionPaths: []string{
+			"pin",
+		},
 		DefaultFields: map[string]string{
 			"region": "us-west",
 			"dc":     "dc1",
@@ -614,50 +637,52 @@ func ExampleUsage() {
 		Development: false,
 	})
 
-	// Create context with trace
+	// Create appContext with trace
 	ctx := NewContext()
 
 	// Example logs
-	GetLogger().Info(ctx, "Application started",
+	GetLogger().info(ctx, "Application started",
 		zap.String("version", "1.0.0"),
 	)
 
 	// logger with sensitive data
-	GetLogger().Info(ctx, "User updated profile",
-		zap.String("user_id", "123"),
+	GetLogger().info(ctx, "User updated profile",
+		zap.String("pin", "123"),
 		zap.String("credit_card", "4111-1111-1111-1111"), // Will be masked
 	)
 
 	// logger error with stack trace
 	err := fmt.Errorf("database connection failed")
-	GetLogger().Error(ctx, "Failed to process request",
+	GetLogger().error(ctx, "Failed to process request",
 		zap.Error(err),
 		zap.String("user_id", "123"),
 	)
 
 	// Contoh penggunaan logger wrapper
-	GetLogger().LogInfo(ctx, "Application started",
+	GetLogger().Info(ctx, "Application started",
 		String("version", "1.0.0"),
 		String("environment", "production"),
 	)
 
 	// logger dengan data sensitif
-	GetLogger().LogInfo(ctx, "User updated profile",
+	GetLogger().Info(ctx, "User updated profile",
 		String("user_id", "123"),
 		String("credit_card", "4111-1111-1111-1111"), // Akan tetap dimasking
 	)
 
 	// logger error dengan data terstruktur
 	user := struct {
-		ID    string `json:"id"`
-		Email string `json:"email"`
+		ID       string `json:"id"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}{
-		ID:    "123",
-		Email: "user@example.com",
+		ID:       "123",
+		Email:    "user@example.com",
+		Password: "pqweweq",
 	}
 
 	err = fmt.Errorf("database connection failed")
-	GetLogger().LogError(ctx, "Failed to process request",
+	GetLogger().Error(ctx, "Failed to process request",
 		Error(err),
 		Interface("user", user),
 		Duration("response_time", 1500*time.Millisecond),

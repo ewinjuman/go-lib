@@ -1,4 +1,4 @@
-package session
+package sessionX
 
 import (
 	"context"
@@ -413,7 +413,7 @@ func TestSession_SetErrorMessage(t *testing.T) {
 		args   args
 		want   *Session
 	}{
-		{"set Error Message",
+		{"set error Message",
 			fields{
 				ErrorMessage: "gagal",
 			},
@@ -922,7 +922,7 @@ func TestSession_LogResponseGrpc(t *testing.T) {
 				url:          "/user.User/TokenValidation",
 				method:       "GRPC",
 				body:         request{Id: 123},
-				messageError: []string{"Error"},
+				messageError: []string{"error"},
 			},
 		},
 	}

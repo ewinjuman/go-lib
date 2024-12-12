@@ -1,4 +1,4 @@
-package context
+package appContext
 
 import (
 	"context"
@@ -11,8 +11,7 @@ import (
 )
 
 type AppContext struct {
-	Context            context.Context
-	Map                Map.ConcurrentMap
+	cMap               Map.ConcurrentMap
 	RequestID          string
 	TraceID            string
 	RequestTime        time.Time
@@ -31,6 +30,7 @@ func New(log *Logger.Logger) *AppContext {
 		RequestID:   uuid.New().String(),
 		RequestTime: time.Now(),
 		logger:      log,
+		cMap:        Map.New(),
 	}
 }
 
@@ -140,4 +140,22 @@ func setContextIfNotNil(ctx context.Context, key interface{}, value interface{})
 		return context.WithValue(ctx, key, value)
 	}
 	return ctx
+}
+
+func (ac *AppContext) Get(key string, defaultValue ...interface{}) (data interface{}) {
+	data, ok := ac.cMap.Get(key)
+	if !ok {
+		if len(defaultValue) > 0 {
+			return defaultValue[0]
+		}
+	}
+	return
+}
+
+func (ac *AppContext) Put(key string, data interface{}) {
+	ac.cMap.Set(key, data)
+}
+
+func (ac *AppContext) Remove(key string) {
+	ac.cMap.Remove(key)
 }

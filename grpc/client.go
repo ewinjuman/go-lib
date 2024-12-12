@@ -65,7 +65,7 @@ func clientInterceptor(ctx context.Context, method string, request interface{}, 
 //package grpc
 //
 //import (
-//"context"
+//"appContext"
 //"time"
 //
 //"github.com/google/uuid"
@@ -83,8 +83,8 @@ func clientInterceptor(ctx context.Context, method string, request interface{}, 
 //	Connection *grpc.ClientConn
 //}
 //
-//func (rpc *RpcConnection) CreateContext(parent context.Context, threadID uuid.UUID) (ctx context.Context, cancel context.CancelFunc) {
-//	ctx, cancel = context.WithTimeout(parent, rpc.options.Timeout)
+//func (rpc *RpcConnection) CreateContext(parent appContext.Context, threadID uuid.UUID) (ctx appContext.Context, cancel appContext.CancelFunc) {
+//	ctx, cancel = appContext.WithTimeout(parent, rpc.options.Timeout)
 //	md := metadata.New(map[string]string{"Request-Id": threadID.String()})
 //	ctx = metadata.NewOutgoingContext(ctx, md)
 //	return
@@ -103,7 +103,7 @@ func clientInterceptor(ctx context.Context, method string, request interface{}, 
 //	return
 //}
 //
-//func clientInterceptor(ctx context.Context, method string, request interface{}, response interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+//func clientInterceptor(ctx appContext.Context, method string, request interface{}, response interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 //	timeStart := time.Now()
 //	threadID := uuid.New()
 //	md := metadata.Pairs("Request-Id", threadID.String())

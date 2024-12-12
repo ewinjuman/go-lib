@@ -1,4 +1,4 @@
-package session
+package sessionX
 
 import (
 	"context"
@@ -12,7 +12,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	JsonIter "github.com/json-iterator/go"
 	Map "github.com/orcaman/concurrent-map"
-	"go.uber.org/zap"
 )
 
 const (
@@ -128,9 +127,9 @@ func (session *Session) Put(key string, data interface{}) {
 
 func (session *Session) LogDatabase(sql string, result interface{}, error interface{}) {
 	session.Logger.Info(session.Context, "",
-		zap.String("sql", sql),
-		zap.Any("result", result),
-		zap.Any("error", error),
+		Logger.String("sql", sql),
+		Logger.Interface("result", result),
+		Logger.Interface("error", error),
 	)
 }
 
@@ -140,10 +139,10 @@ func (session *Session) LogRequest(message ...interface{}) {
 		msg = formatResponse(message...)
 	}
 	session.Logger.Info(session.Context, msg,
-		zap.String("method", session.Method),
-		zap.String("url", session.URL),
-		zap.Any("request", session.Request),
-		zap.Any("header", session.Header),
+		Logger.String("method", session.Method),
+		Logger.String("url", session.URL),
+		Logger.Interface("request", session.Request),
+		Logger.Interface("header", session.Header),
 	)
 }
 
@@ -157,40 +156,40 @@ func (session *Session) LogResponse(response interface{}, message ...interface{}
 	}
 
 	session.Logger.Info(session.Context, msg,
-		zap.String("method", session.Method),
-		zap.String("url", session.URL),
-		zap.Any("response", response),
-		zap.String("response_time", fmt.Sprintf("%d ms", rt)),
+		Logger.String("method", session.Method),
+		Logger.String("url", session.URL),
+		Logger.Interface("response", response),
+		Logger.String("response_time", fmt.Sprintf("%d ms", rt)),
 	)
 }
 
 func (session *Session) LogRequestHttp(url string, method string, body interface{}, header interface{}, params interface{}) {
 	session.Logger.Info(session.Context, "request_http_started",
-		zap.String("method", method),
-		zap.String("url", url),
-		zap.Any("request", body),
-		zap.Any("params", params),
-		zap.Any("header", header),
+		Logger.String("method", method),
+		Logger.String("url", url),
+		Logger.Interface("request", body),
+		Logger.Interface("params", params),
+		Logger.Interface("header", header),
 	)
 }
 
 func (session *Session) LogResponseHttp(responseTime time.Duration, code int, url string, method string, body interface{}, err error) {
 	if err != nil {
 		session.Logger.Error(session.Context, "request_http_completed",
-			zap.String("method", method),
-			zap.String("url", url),
-			zap.Int("http_status", code),
-			zap.Error(err),
-			zap.Any("response", body),
-			zap.String("process_time", fmt.Sprintf("%d ms", responseTime.Milliseconds())),
+			Logger.String("method", method),
+			Logger.String("url", url),
+			Logger.Int("http_status", code),
+			Logger.Error(err),
+			Logger.Interface("response", body),
+			Logger.String("process_time", fmt.Sprintf("%d ms", responseTime.Milliseconds())),
 		)
 	} else {
 		session.Logger.Info(session.Context, "request_http_completed",
-			zap.String("method", method),
-			zap.String("url", url),
-			zap.Int("http_status", code),
-			zap.Any("response", body),
-			zap.String("process_time", fmt.Sprintf("%d ms", responseTime.Milliseconds())),
+			Logger.String("method", method),
+			Logger.String("url", url),
+			Logger.Int("http_status", code),
+			Logger.Interface("response", body),
+			Logger.String("process_time", fmt.Sprintf("%d ms", responseTime.Milliseconds())),
 		)
 	}
 }
@@ -198,28 +197,28 @@ func (session *Session) LogResponseHttp(responseTime time.Duration, code int, ur
 func (session *Session) LogRequestGrpc(url string, method string, body interface{}, header interface{}) {
 
 	session.Logger.Info(session.Context, "request_grpc_started",
-		zap.String("method", method),
-		zap.String("url", url),
-		zap.Any("request", body),
-		zap.Any("header", header),
+		Logger.String("method", method),
+		Logger.String("url", url),
+		Logger.Interface("request", body),
+		Logger.Interface("header", header),
 	)
 }
 
 func (session *Session) LogResponseGrpc(startProcessTime time.Time, url string, method string, body interface{}) {
 	stop := time.Now()
 	session.Logger.Info(session.Context, "response_grpc_started",
-		zap.String("method", method),
-		zap.String("url", url),
-		zap.Any("response", body),
-		zap.String("process_time", fmt.Sprintf("%d ms", stop.Sub(startProcessTime).Milliseconds())),
+		Logger.String("method", method),
+		Logger.String("url", url),
+		Logger.Interface("response", body),
+		Logger.String("process_time", fmt.Sprintf("%d ms", stop.Sub(startProcessTime).Milliseconds())),
 	)
 }
 
 func (session *Session) LogMessage(message interface{}, data interface{}) {
 	session.Logger.Info(session.Context, message.(string),
-		zap.String("request_id", session.ThreadID),
-		zap.Any("message", message),
-		zap.Any("data", data),
+		Logger.String("request_id", session.ThreadID),
+		Logger.Interface("message", message),
+		Logger.Interface("data", data),
 	)
 }
 

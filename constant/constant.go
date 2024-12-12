@@ -1,10 +1,10 @@
 package constant
 
-// contextKey untuk menyimpan values di context
+// contextKey untuk menyimpan values di appContext
 type ContextKey string
 
 const (
-	AppContextKey     ContextKey = "app_context"
+	AppContextKey     ContextKey = "appContext"
 	RequestTimeKey    ContextKey = "request_time"
 	RequestMethodKey  ContextKey = "request_method"
 	RequestPathKey    ContextKey = "request_path"

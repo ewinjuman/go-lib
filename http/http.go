@@ -6,38 +6,17 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/ewinjuman/go-lib/v2/appContext"
 	"net/http"
 	"strings"
 	"time"
 
 	Error "github.com/ewinjuman/go-lib/v2/error"
-	Session "github.com/ewinjuman/go-lib/v2/session"
 	"github.com/ewinjuman/go-lib/v2/utils/convert"
 	"github.com/go-resty/resty/v2"
 )
 
 type Method string
-
-type RequestConfig struct {
-	Method     Method
-	Host       string
-	Path       string
-	Header     http.Header
-	Payload    interface{}
-	PathParams map[string]string
-	QueryParam map[string]string
-	File       []MultipartData
-}
-
-type RestClient interface {
-	DefaultHeader(username, password string) http.Header
-	BasicAuth(username, password string) string
-	Execute(session *Session.Session, method Method, host string, path string, headers http.Header, payload interface{}, pathParams map[string]string, queryParam map[string]string, file []MultipartData) (body []byte, statusCode int, err error)
-}
-
-func (v Method) String() string {
-	return string(v)
-}
 
 const (
 	MethodPost    Method = "POST"
@@ -47,6 +26,26 @@ const (
 	MethodPatch   Method = "PATCH"
 	MethodOptions Method = "OPTIONS"
 )
+
+func (v Method) String() string {
+	return string(v)
+}
+
+type RequestConfig struct {
+	Url         string
+	Method      Method
+	Headers     http.Header
+	Payload     interface{}
+	PathParams  map[string]string
+	QueryParams map[string]string
+	File        []MultipartData
+}
+
+type RestClient interface {
+	DefaultHeader(username, password string) http.Header
+	BasicAuth(username, password string) string
+	Execute(appCtx *appContext.AppContext, method Method, url string, headers http.Header, payload interface{}, pathParams map[string]string, queryParam map[string]string, file []MultipartData) (body []byte, statusCode int, err error)
+}
 
 func New(options Options) RestClient {
 	httpClient := resty.New()
@@ -59,15 +58,16 @@ func New(options Options) RestClient {
 	httpClient.SetDebug(options.DebugMode)
 
 	return &client{
-		options:    options,
-		httpClient: httpClient,
+		//options:        options,
+		httpClient:     httpClient,
+		circuitBreaker: NewCircuitBreaker(),
 	}
 }
 
 type client struct {
-	options    Options
-	httpClient *resty.Client
-	session    *Session.Session
+	//options        Options
+	httpClient     *resty.Client
+	circuitBreaker *CircuitBreaker
 }
 
 func (c *client) DefaultHeader(username, password string) http.Header {
@@ -81,11 +81,21 @@ func (c *client) BasicAuth(username, password string) string {
 	return base64.StdEncoding.EncodeToString([]byte(auth))
 }
 
-func (c *client) Execute(session *Session.Session, method Method, host string, path string, headers http.Header, payload interface{}, pathParams map[string]string, queryParam map[string]string, file []MultipartData) (body []byte, statusCode int, err error) {
+func (c *client) Execute(appCtx *appContext.AppContext, method Method, url string, headers http.Header, payload interface{}, pathParams map[string]string, queryParam map[string]string, file []MultipartData) (body []byte, statusCode int, err error) {
+
+	//if c.circuitBreaker == nil {
+	//	c.circuitBreaker = NewCircuitBreaker()
+	//}
+
+	//// Periksa apakah sirkuit diizinkan
+	//if err := c.circuitBreaker.Allow(); err != nil {
+	//	// Jika sirkuit terbuka, kembalikan error
+	//	return nil, 0, err
+	//}
+
 	for key, value := range pathParams {
-		path = strings.ReplaceAll(path, fmt.Sprintf(":%s", key), value)
+		url = strings.ReplaceAll(url, fmt.Sprintf(":%s", key), value)
 	}
-	url := host + path
 	request := c.httpClient.R()
 
 	// Set header
@@ -95,7 +105,7 @@ func (c *client) Execute(session *Session.Session, method Method, host string, p
 	if headers["Content-Type"] == nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
-	request.Header.Set("X-Request-ID", session.ThreadID)
+	request.Header.Set("X-Request-ID", appCtx.RequestID)
 
 	if queryParam != nil {
 		request.SetQueryParams(queryParam)
@@ -105,12 +115,12 @@ func (c *client) Execute(session *Session.Session, method Method, host string, p
 	switch request.Header.Get("Content-Type") {
 	case "application/json":
 		request.SetBody(payload)
-		session.LogRequestHttp(url, method.String(), request.Body, request.Header, request.QueryParam)
+		appCtx.Log().LogRequestHttp(appCtx.ToContext(), url, method.String(), request.Body, request.Header, request.QueryParam)
 	case "application/x-www-form-urlencoded", "multipart/form-data":
 		var formData map[string]string
 		convert.ObjectToObject(payload, &formData)
 		request.SetFormData(formData)
-		session.LogRequestHttp(url, method.String(), request.FormData, request.Header, request.QueryParam)
+		appCtx.Log().LogRequestHttp(appCtx.ToContext(), url, method.String(), request.FormData, request.Header, request.QueryParam)
 		if request.Header.Get("Content-Type") == "multipart/form-data" {
 			for _, val := range file {
 				request.SetFileReader(val.Key, val.Value, val.File)
@@ -138,10 +148,11 @@ func (c *client) Execute(session *Session.Session, method Method, host string, p
 	responseTime := result.Time()
 	// Check errExecute HTTP
 	if errExecute != nil {
+		//c.circuitBreaker.RecordFailure(errExecute)
 		if result != nil {
 			body = result.Body()
 		}
-		session.LogResponseHttp(responseTime, statusCode, url, method.String(), body, errExecute)
+		appCtx.Log().LogResponseHttp(appCtx.ToContext(), responseTime, statusCode, url, method.String(), body, errExecute)
 
 		err = errExecute
 		if Error.IsTimeout(errExecute) {
@@ -149,6 +160,8 @@ func (c *client) Execute(session *Session.Session, method Method, host string, p
 		}
 		return
 	}
+
+	//c.circuitBreaker.RecordSuccess()
 
 	// Check,
 	if result != nil {
@@ -163,18 +176,18 @@ func (c *client) Execute(session *Session.Session, method Method, host string, p
 	case "application/json":
 		var result interface{}
 		json.Unmarshal(body, &result)
-		session.LogResponseHttp(responseTime, statusCode, url, method.String(), result, nil)
+		appCtx.Log().LogResponseHttp(appCtx.ToContext(), responseTime, statusCode, url, method.String(), result, nil)
 	case "text/html":
-		session.LogResponseHttp(responseTime, statusCode, url, method.String(), string(body), nil)
+		appCtx.Log().LogResponseHttp(appCtx.ToContext(), responseTime, statusCode, url, method.String(), string(body), nil)
 	case "application/octet-stream":
-		session.LogResponseHttp(responseTime, statusCode, url, method.String(), "", nil)
+		appCtx.Log().LogResponseHttp(appCtx.ToContext(), responseTime, statusCode, url, method.String(), "", nil)
 	default:
 		var result interface{}
 		er := json.Unmarshal(body, &result)
 		if er != nil {
-			session.LogResponseHttp(responseTime, statusCode, url, method.String(), string(body), nil)
+			appCtx.Log().LogResponseHttp(appCtx.ToContext(), responseTime, statusCode, url, method.String(), string(body), nil)
 		} else {
-			session.LogResponseHttp(responseTime, statusCode, url, method.String(), result, nil)
+			appCtx.Log().LogResponseHttp(appCtx.ToContext(), responseTime, statusCode, url, method.String(), result, nil)
 		}
 	}
 

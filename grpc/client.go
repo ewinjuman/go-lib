@@ -2,9 +2,10 @@ package grpc
 
 import (
 	"context"
+	"github.com/ewinjuman/go-lib/v2/constant"
 	"time"
 
-	Session "github.com/ewinjuman/go-lib/v2/session"
+	"github.com/ewinjuman/go-lib/v2/appContext"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
@@ -19,10 +20,10 @@ type RpcConnection struct {
 	Connection *grpc.ClientConn
 }
 
-func (rpc *RpcConnection) CreateContext(parent context.Context, session *Session.Session) (ctx context.Context, cancel context.CancelFunc) {
+func (rpc *RpcConnection) CreateContext(parent context.Context, appCtx *appContext.AppContext) (ctx context.Context, cancel context.CancelFunc) {
 	ctx, cancel = context.WithTimeout(parent, rpc.options.Timeout*time.Second)
-	ctx = context.WithValue(ctx, Session.AppSession, session)
-	md := metadata.New(map[string]string{"Request-Id": session.ThreadID})
+	ctx = context.WithValue(ctx, constant.AppContextKey, appCtx)
+	md := metadata.New(map[string]string{"Request-Id": appCtx.RequestID})
 	ctx = metadata.NewOutgoingContext(ctx, md)
 	return
 }
@@ -42,21 +43,21 @@ func New(options Options) (rpc *RpcConnection, err error) {
 
 func clientInterceptor(ctx context.Context, method string, request interface{}, response interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	timeStart := time.Now()
-	session := ctx.Value(Session.AppSession).(*Session.Session)
+	appCtx := ctx.Value(constant.AppContextKey).(*appContext.AppContext)
 
 	md, ok := metadata.FromOutgoingContext(ctx)
 	if !ok {
 		println("error meta data")
 	}
 
-	session.LogRequestGrpc(method, "GRPC", &request, md)
+	appCtx.Log().LogRequestGrpc(appCtx.ToContext(), method, "GRPC", &request, md)
 	err := invoker(ctx, method, request, response, cc, opts...)
 
 	if err != nil {
-		session.LogResponseGrpc(timeStart, method, "GRPC", err.Error())
+		appCtx.Log().LogResponseGrpc(appCtx.ToContext(), timeStart, method, "GRPC", err.Error())
 		return err
 	}
-	session.LogResponseGrpc(timeStart, method, "GRPC", &response)
+	appCtx.Log().LogResponseGrpc(appCtx.ToContext(), timeStart, method, "GRPC", &response)
 	return err
 }
 

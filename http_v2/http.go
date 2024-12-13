@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"github.com/ewinjuman/go-lib/v2/appContext"
-	"github.com/go-resty/resty/v2"
+	//"github.com/go-resty/resty/v2"
 	"net/http"
 	"time"
 )
@@ -33,7 +33,7 @@ type (
 	}
 
 	Request struct {
-		appContext            *appContext.AppContext
+		AppContext            *appContext.AppContext
 		URL                   string
 		Method                Method
 		Body                  interface{}
@@ -52,8 +52,8 @@ type (
 	}
 
 	RequestBuilder struct {
-		request    Request
-		httpClient *resty.Client
+		request Request
+		client  *ReqClient
 		//requestManager RequestManager
 		//requestRetry   RequestRetry
 	}
@@ -64,12 +64,12 @@ func Do(appContext *appContext.AppContext, method Method, host, path string) *Re
 	url := host + path
 	return &RequestBuilder{
 		request: Request{
-			appContext: appContext,
+			AppContext: appContext,
 			URL:        url,
 			Method:     method,
 			Headers:    http.Header{},
 		},
-		httpClient: httpclient(),
+		client: httpclient(),
 		//requestRetry:   &RequestRetryWhenTimeout{},
 	}
 }
@@ -96,6 +96,11 @@ func Patch(appContext *appContext.AppContext, host, endpoint string) *RequestBui
 
 func Options(appContext *appContext.AppContext, host, endpoint string) *RequestBuilder {
 	return Do(appContext, MethodOptions, host, endpoint)
+}
+
+func (rb *RequestBuilder) WithQueryParam(queryParams map[string]string) *RequestBuilder {
+	rb.request.QueryParams = queryParams
+	return rb
 }
 
 func (rb *RequestBuilder) WithPathParam(pathParams map[string]string) *RequestBuilder {
@@ -143,5 +148,10 @@ func (rb *RequestBuilder) WithBearer(token string) *RequestBuilder {
 }
 
 func (rb *RequestBuilder) Execute() *Response {
-	return rb.request.DoRequest(rb.httpClient)
+	return rb.request.DoRequest(rb.client)
+}
+
+// soon...
+func (rb *RequestBuilder) ExecuteWithRetry(numberOfRetry int) *Response {
+	return rb.request.DoRequest(rb.client)
 }

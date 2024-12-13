@@ -6,36 +6,34 @@ import (
 	Error "github.com/ewinjuman/go-lib/v2/error"
 	"github.com/ewinjuman/go-lib/v2/utils/convert"
 	"github.com/go-resty/resty/v2"
-	"log"
 	"strings"
 	"time"
 )
 
-func (r *Request) DoRequest(httpClient *resty.Client) (response *Response) {
-	appCtx := r.appContext
+func (r *Request) DoRequest(client *ReqClient) (response *Response) {
+	appCtx := r.AppContext
 	response = &Response{}
 	url := r.URL
 	for key, value := range r.PathParams {
 		url = strings.ReplaceAll(url, fmt.Sprintf(":%s", key), value)
 	}
 	if r.Timeout > 0 {
-		httpClient.SetTimeout(r.Timeout * time.Millisecond)
+		client.httpClient.SetTimeout(r.Timeout * time.Millisecond)
 	}
-	request := httpClient.R()
+	request := client.httpClient.R()
 
 	// Set header
 	for h, val := range r.Headers {
 		request.Header[h] = val
 	}
-	if r.Headers["Content-Type"] == nil {
+	if r.Headers["Content-Type"] == nil && r.Method != MethodGet {
 		request.Header.Set("Content-Type", "application/json")
 	}
-	request.Header.Set("X-Request-ID", "appCtx.RequestID")
+	request.Header.Set("X-Request-ID", appCtx.RequestID)
 
 	if r.QueryParams != nil {
 		request.SetQueryParams(r.QueryParams)
 	}
-
 	// Set body
 	switch request.Header.Get("Content-Type") {
 	case "application/json":
@@ -51,6 +49,8 @@ func (r *Request) DoRequest(httpClient *resty.Client) (response *Response) {
 				request.SetFileReader(val.Key, val.Value, val.File)
 			}
 		}
+	default:
+		appCtx.Log().LogRequestHttp(appCtx.ToContext(), url, r.Method.String(), request.Body, request.Header, request.QueryParam)
 	}
 
 	// Execute rest
@@ -119,43 +119,4 @@ func (r *Request) DoRequest(httpClient *resty.Client) (response *Response) {
 	}
 
 	return response
-}
-
-//func (d *RequestBuilder) Do() *Response {
-//
-//}
-
-func (r *Response) Consume(v interface{}) error {
-	if r.Error != nil {
-		return r.Error
-	}
-
-	if r.StatusCode < 200 || r.StatusCode > 299 {
-		log.Println("statusCode", r.StatusCode)
-		log.Println("body", r.Body)
-		log.Println("Error when make request")
-
-		body := ""
-		if r.Body != nil {
-			body = string(r.Body)
-		}
-
-		return fmt.Errorf("Response return status not OK, with status code %d, and body %s",
-			r.StatusCode,
-			body,
-		)
-	}
-
-	if r.Body == nil {
-		return ErrEmptyResponseBody
-	}
-
-	if err := json.Unmarshal(r.Body, &v); err != nil {
-		return fmt.Errorf("failed copying response body to interface, cause %s, responseBody %s",
-			err.Error(),
-			string(r.Body),
-		)
-	}
-
-	return nil
 }

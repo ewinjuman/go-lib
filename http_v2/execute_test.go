@@ -3,7 +3,6 @@ package http_v2
 import (
 	"github.com/ewinjuman/go-lib/v2/appContext"
 	"github.com/ewinjuman/go-lib/v2/logger"
-	"github.com/go-resty/resty/v2"
 	"github.com/stretchr/testify/assert"
 	"net/http"
 	"sync"
@@ -16,7 +15,7 @@ var (
 	once     sync.Once
 )
 
-func InitLogger(opts logger.Options) {
+func initLogger(opts logger.Options) {
 	once.Do(func() {
 		logger, err := logger.New(opts)
 		if err != nil {
@@ -26,7 +25,7 @@ func InitLogger(opts logger.Options) {
 	})
 }
 
-func GetLogger() *logger.Logger {
+func getLogger() *logger.Logger {
 	option := logger.Options{
 		AppName:     "myapp",
 		Environment: "production",
@@ -55,7 +54,7 @@ func GetLogger() *logger.Logger {
 	}
 	if instance == nil {
 		// Default config jika belum diinisialisasi
-		InitLogger(option)
+		initLogger(option)
 	}
 	return instance
 }
@@ -65,7 +64,7 @@ func TestRequest_DoRequest(t *testing.T) {
 		request Request
 	}
 	type args struct {
-		httpClient *resty.Client
+		httpClient *ReqClient
 	}
 	tests := []struct {
 		name      string
@@ -76,7 +75,7 @@ func TestRequest_DoRequest(t *testing.T) {
 		{
 			"Success",
 			fields{request: Request{
-				appContext:  appContext.New(GetLogger()),
+				AppContext:  appContext.New(getLogger()),
 				URL:         "http://localhost:3000/template",
 				Method:      MethodGet,
 				Body:        nil,

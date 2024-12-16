@@ -1,7 +1,6 @@
 package http_v2
 
 import (
-	"github.com/ewinjuman/go-lib/v2/appContext"
 	"github.com/ewinjuman/go-lib/v2/logger"
 	"github.com/stretchr/testify/assert"
 	"net/http"
@@ -75,7 +74,6 @@ func TestRequest_DoRequest(t *testing.T) {
 		{
 			"Success",
 			fields{request: Request{
-				AppContext:  appContext.New(getLogger()),
 				URL:         "http://localhost:3000/template",
 				Method:      MethodGet,
 				Body:        nil,
@@ -99,7 +97,7 @@ func TestRequest_DoRequest(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if gotResponse := tt.fields.request.DoRequest(tt.args.httpClient); !tt.validator(gotResponse) {
+			if gotResponse := tt.fields.request.DoRequest(getLogger(), tt.args.httpClient); !tt.validator(gotResponse) {
 				t.Errorf("DoRequest() = %v", gotResponse)
 			}
 		})

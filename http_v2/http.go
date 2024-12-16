@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"github.com/ewinjuman/go-lib/v2/appContext"
+	"github.com/ewinjuman/go-lib/v2/logger"
+	"github.com/ewinjuman/go-lib/v2/utils"
+
 	//"github.com/go-resty/resty/v2"
 	"net/http"
 	"time"
@@ -33,7 +35,7 @@ type (
 	}
 
 	Request struct {
-		AppContext            *appContext.AppContext
+		logger.Writer
 		URL                   string
 		Method                Method
 		Body                  interface{}
@@ -59,43 +61,48 @@ type (
 	}
 )
 
-func Do(appContext *appContext.AppContext, method Method, host, path string) *RequestBuilder {
+func Do(ctx context.Context, method Method, host, path string) *RequestBuilder {
 
 	url := host + path
 	return &RequestBuilder{
 		request: Request{
-			AppContext: appContext,
-			URL:        url,
-			Method:     method,
-			Headers:    http.Header{},
+			//AppContext: appContext,
+			URL:     url,
+			Method:  method,
+			Headers: http.Header{},
 		},
 		client: httpclient(),
 		//requestRetry:   &RequestRetryWhenTimeout{},
 	}
 }
 
-func Post(appContext *appContext.AppContext, host, endpoint string) *RequestBuilder {
-	return Do(appContext, MethodPost, host, endpoint)
+func Post(ctx context.Context, host, endpoint string) *RequestBuilder {
+	return Do(ctx, MethodPost, host, endpoint)
 }
 
-func Get(appContext *appContext.AppContext, host, endpoint string) *RequestBuilder {
-	return Do(appContext, MethodGet, host, endpoint)
+func Get(ctx context.Context, host, endpoint string) *RequestBuilder {
+	return Do(ctx, MethodGet, host, endpoint)
 }
 
-func Put(appContext *appContext.AppContext, host, endpoint string) *RequestBuilder {
-	return Do(appContext, MethodPut, host, endpoint)
+func Put(ctx context.Context, host, endpoint string) *RequestBuilder {
+	return Do(ctx, MethodPut, host, endpoint)
 }
 
-func Delete(appContext *appContext.AppContext, host, endpoint string) *RequestBuilder {
-	return Do(appContext, MethodDelete, host, endpoint)
+func Delete(ctx context.Context, host, endpoint string) *RequestBuilder {
+	return Do(ctx, MethodDelete, host, endpoint)
 }
 
-func Patch(appContext *appContext.AppContext, host, endpoint string) *RequestBuilder {
-	return Do(appContext, MethodPatch, host, endpoint)
+func Patch(ctx context.Context, host, endpoint string) *RequestBuilder {
+	return Do(ctx, MethodPatch, host, endpoint)
 }
 
-func Options(appContext *appContext.AppContext, host, endpoint string) *RequestBuilder {
-	return Do(appContext, MethodOptions, host, endpoint)
+func Options(ctx context.Context, host, endpoint string) *RequestBuilder {
+	return Do(ctx, MethodOptions, host, endpoint)
+}
+
+func (rb *RequestBuilder) SetWriter(writer logger.Writer) *RequestBuilder {
+	rb.request.Writer = writer
+	return rb
 }
 
 func (rb *RequestBuilder) WithQueryParam(queryParams map[string]string) *RequestBuilder {
@@ -148,10 +155,14 @@ func (rb *RequestBuilder) WithBearer(token string) *RequestBuilder {
 }
 
 func (rb *RequestBuilder) Execute() *Response {
-	return rb.request.DoRequest(rb.client)
+	if utils.IsEmpty(rb.request.Writer) {
+		log, _ := logger.New(logger.DefaultOptions())
+		rb.SetWriter(log)
+	}
+	return rb.request.DoRequest(rb.request.Writer, rb.client)
 }
 
-// soon...
+// ExecuteWithRetry soon...
 func (rb *RequestBuilder) ExecuteWithRetry(numberOfRetry int) *Response {
-	return rb.request.DoRequest(rb.client)
+	return rb.request.DoRequest(rb.request.Writer, rb.client)
 }

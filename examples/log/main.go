@@ -69,16 +69,16 @@ func main() {
 		ID:       "123",
 		Email:    "user@example.com",
 		Token:    "902930230",
-		Password: "19202029",
+		Password: "password",
 	}
 
 	start := time.Now()
 	appCtx := appContext.New(GetLogger())
-	appCtx.SetRequestID("requestID") // set if needed
-	appCtx.Log().Info(appCtx.ToContext(), "Start", logger.String("user", "kamu"), logger.String("token", "udhs908711"))
-	appCtx.Log().Info(appCtx.ToContext(), "print struct", logger.Interface("user", user))
+	//appCtx.SetRequestID("requestID") // set if needed
+	appCtx.LogInfo("Start", logger.String("user", "kamu"), logger.String("token", "udhs908711"))
+	appCtx.LogInfo("print struct", logger.Interface("user", user))
 	appCtx.Log().Info(appCtx.ToContext(), "masking", logger.String("token", "12345789"), logger.String("Email", "user@example.com"))
-	appCtx.Log().Info(appCtx.ToContext(), "redaction", logger.String("pin", "12345789"), logger.String("Email", "user@example.com"))
+	appCtx.Log().Info(appCtx.ToContext(), "redaction", logger.String("pin", "123456"), logger.String("Email", "user@example.com"))
 	stop := time.Now()
 	println(fmt.Sprintf("%d ms", stop.Sub(start).Milliseconds()))
 }

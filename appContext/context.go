@@ -159,3 +159,21 @@ func (ac *AppContext) Put(key string, data interface{}) {
 func (ac *AppContext) Remove(key string) {
 	ac.cMap.Remove(key)
 }
+
+func (ac *AppContext) LogInfo(msg string, fields ...Logger.Field) {
+	ac.Log().Info(ac.ToContext(), msg, fields...)
+}
+
+func (ac *AppContext) LogError(msg string, fields ...Logger.Field) {
+	ac.Log().Error(ac.ToContext(), msg, fields...)
+}
+
+func (ac *AppContext) LogDebug(msg string, fields ...Logger.Field) {
+	ac.Log().Debug(ac.ToContext(), msg, fields...)
+}
+func (ac *AppContext) LogWarn(msg string, fields ...Logger.Field) {
+	ac.Log().Warn(ac.ToContext(), msg, fields...)
+}
+func (ac *AppContext) LogFatal(msg string, fields ...Logger.Field) {
+	ac.Log().Fatal(ac.ToContext(), msg, fields...)
+}

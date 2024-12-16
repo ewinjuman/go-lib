@@ -61,3 +61,11 @@ func AfterString(value string, after string) string {
 	}
 	return value[adjustedPos:]
 }
+
+// Or check if testValue is empty, if empty return defaultValue.
+func Or(testValue, defaultValue interface{}) interface{} {
+	if !IsEmpty(testValue) {
+		return testValue
+	}
+	return defaultValue
+}

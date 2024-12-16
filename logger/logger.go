@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/ewinjuman/go-lib/v2/constant"
+	"github.com/ewinjuman/go-lib/v2/utils"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -27,6 +28,10 @@ const (
 	ErrorLevel Level = "error"
 	FatalLevel Level = "fatal"
 )
+
+type Writer interface {
+	Print(string, ...interface{})
+}
 
 // Options untuk konfigurasi logger
 type Options struct {
@@ -254,7 +259,6 @@ func (l *Logger) maskSensitiveData(fields ...zap.Field) []zap.Field {
 			// Mask value keeping first and last 4 chars
 			value := field.String
 			if needsRedaction {
-				println(field.Key)
 				maskedFields[i] = zap.String(field.Key, "[REDACTED]")
 			} else if isValidEmail(value) {
 				maskedFields[i] = zap.String(field.Key, maskEmail(value))
@@ -277,15 +281,15 @@ func (l *Logger) maskSensitiveData(fields ...zap.Field) []zap.Field {
 
 // Logger methods
 func (l *Logger) debug(ctx context.Context, msg string, fields ...zap.Field) {
-	l.WithContext(ctx).Debug(msg, l.maskSensitiveData(fields...)...)
+	l.WithContext(ctx).With(zap.String("caller", utils.FileWithLineNum())).Debug(msg, l.maskSensitiveData(fields...)...)
 }
 
 func (l *Logger) info(ctx context.Context, msg string, fields ...zap.Field) {
-	l.WithContext(ctx).Info(msg, l.maskSensitiveData(fields...)...)
+	l.WithContext(ctx).With(zap.String("caller", utils.FileWithLineNum())).Info(msg, l.maskSensitiveData(fields...)...)
 }
 
 func (l *Logger) warn(ctx context.Context, msg string, fields ...zap.Field) {
-	l.WithContext(ctx).Warn(msg, l.maskSensitiveData(fields...)...)
+	l.WithContext(ctx).With(zap.String("caller", utils.FileWithLineNum())).Warn(msg, l.maskSensitiveData(fields...)...)
 }
 
 func (l *Logger) error(ctx context.Context, msg string, fields ...zap.Field) {
@@ -293,14 +297,14 @@ func (l *Logger) error(ctx context.Context, msg string, fields ...zap.Field) {
 	if l.options.EnableTrace {
 		fields = append(fields, zap.String("stack_trace", getStackTrace()))
 	}
-	l.WithContext(ctx).Error(msg, l.maskSensitiveData(fields...)...)
+	l.WithContext(ctx).With(zap.String("caller", utils.FileWithLineNum())).Error(msg, l.maskSensitiveData(fields...)...)
 }
 
 func (l *Logger) fatal(ctx context.Context, msg string, fields ...zap.Field) {
 	if l.options.EnableTrace {
 		fields = append(fields, zap.String("stack_trace", getStackTrace()))
 	}
-	l.WithContext(ctx).Fatal(msg, l.maskSensitiveData(fields...)...)
+	l.WithContext(ctx).With(zap.String("caller", utils.FileWithLineNum())).Fatal(msg, l.maskSensitiveData(fields...)...)
 }
 
 // Helper methods
@@ -388,23 +392,23 @@ func (l *Logger) convertToZapFields(fields []Field) []zap.Field {
 
 // Logger methods
 func (l *Logger) Debug(ctx context.Context, msg string, fields ...Field) {
-	l.WithContext(ctx).Debug(msg, l.convertToZapFields(fields)...)
+	l.WithContext(ctx).With(zap.String("caller", utils.FileWithLineNum())).Debug(msg, l.convertToZapFields(fields)...)
 }
 
 func (l *Logger) Info(ctx context.Context, msg string, fields ...Field) {
-	l.WithContext(ctx).Info(msg, l.convertToZapFields(fields)...)
+	l.WithContext(ctx).With(zap.String("caller", utils.FileWithLineNum())).Info(msg, l.convertToZapFields(fields)...)
 }
 
 func (l *Logger) Warn(ctx context.Context, msg string, fields ...Field) {
-	l.WithContext(ctx).Warn(msg, l.convertToZapFields(fields)...)
+	l.WithContext(ctx).With(zap.String("caller", utils.FileWithLineNum())).Warn(msg, l.convertToZapFields(fields)...)
 }
 
 func (l *Logger) Error(ctx context.Context, msg string, fields ...Field) {
-	l.WithContext(ctx).Error(msg, l.convertToZapFields(fields)...)
+	l.WithContext(ctx).With(zap.String("caller", utils.FileWithLineNum())).Error(msg, l.convertToZapFields(fields)...)
 }
 
 func (l *Logger) Fatal(ctx context.Context, msg string, fields ...Field) {
-	l.WithContext(ctx).Fatal(msg, l.convertToZapFields(fields)...)
+	l.WithContext(ctx).With(zap.String("caller", utils.FileWithLineNum())).Fatal(msg, l.convertToZapFields(fields)...)
 }
 
 // maskComplexValue melakukan masking pada struktur data kompleks
@@ -512,6 +516,9 @@ func (l *Logger) maskStringIfNeeded(key string, value string) string {
 
 	for _, path := range l.redactionPath {
 		if strings.Contains(keyLower, strings.ToLower(path)) {
+			if value == "" {
+				return value
+			}
 			return "[REDACTED]"
 		}
 	}
@@ -547,7 +554,7 @@ func (l *Logger) Printf(s string, v ...interface{}) {
 		)
 	}
 }
-func (l *Logger) Print(v ...interface{}) {
+func (l *Logger) Print(s string, v ...interface{}) {
 	if len(v) < 2 {
 		return
 	}
@@ -563,11 +570,8 @@ func (l *Logger) Print(v ...interface{}) {
 			zap.String("source", rightOfDelimiter),
 		)
 	default:
-		delimiter := "/"
-		rightOfDelimiter := strings.Join(strings.Split(v[1].(string), delimiter)[4:], delimiter)
-		l.info(context.Background(), "",
-			zap.Any("values", v[2:]),
-			zap.String("source", rightOfDelimiter),
+		l.info(context.Background(), s,
+			zap.Any("values", v),
 		)
 	}
 }

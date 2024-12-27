@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"github.com/ewinjuman/go-lib/v2/logger"
 	"github.com/ewinjuman/go-lib/v2/utils"
+	"github.com/google/uuid"
 
 	//"github.com/go-resty/resty/v2"
 	"net/http"
@@ -36,6 +37,7 @@ type (
 
 	Request struct {
 		logger.Writer
+		ID                    string
 		URL                   string
 		Method                Method
 		Body                  interface{}
@@ -61,12 +63,10 @@ type (
 	}
 )
 
-func Do(ctx context.Context, method Method, host, path string) *RequestBuilder {
-
+func Do(method Method, host, path string) *RequestBuilder {
 	url := host + path
 	return &RequestBuilder{
 		request: Request{
-			//AppContext: appContext,
 			URL:     url,
 			Method:  method,
 			Headers: http.Header{},
@@ -76,28 +76,38 @@ func Do(ctx context.Context, method Method, host, path string) *RequestBuilder {
 	}
 }
 
-func Post(ctx context.Context, host, endpoint string) *RequestBuilder {
-	return Do(ctx, MethodPost, host, endpoint)
+func Post(host, endpoint string) *RequestBuilder {
+	return Do(MethodPost, host, endpoint)
 }
 
-func Get(ctx context.Context, host, endpoint string) *RequestBuilder {
-	return Do(ctx, MethodGet, host, endpoint)
+func Get(host, endpoint string) *RequestBuilder {
+	return Do(MethodGet, host, endpoint)
 }
 
-func Put(ctx context.Context, host, endpoint string) *RequestBuilder {
-	return Do(ctx, MethodPut, host, endpoint)
+func Put(host, endpoint string) *RequestBuilder {
+	return Do(MethodPut, host, endpoint)
 }
 
-func Delete(ctx context.Context, host, endpoint string) *RequestBuilder {
-	return Do(ctx, MethodDelete, host, endpoint)
+func Delete(host, endpoint string) *RequestBuilder {
+	return Do(MethodDelete, host, endpoint)
 }
 
-func Patch(ctx context.Context, host, endpoint string) *RequestBuilder {
-	return Do(ctx, MethodPatch, host, endpoint)
+func Patch(host, endpoint string) *RequestBuilder {
+	return Do(MethodPatch, host, endpoint)
 }
 
-func Options(ctx context.Context, host, endpoint string) *RequestBuilder {
-	return Do(ctx, MethodOptions, host, endpoint)
+func Options(host, endpoint string) *RequestBuilder {
+	return Do(MethodOptions, host, endpoint)
+}
+
+func (rb *RequestBuilder) SetID(requestID string) *RequestBuilder {
+	rb.request.ID = requestID
+	return rb
+}
+
+func (rb *RequestBuilder) SetDebug(debug bool) *RequestBuilder {
+	rb.request.DebugMode = debug
+	return rb
 }
 
 func (rb *RequestBuilder) SetWriter(writer logger.Writer) *RequestBuilder {
@@ -115,7 +125,7 @@ func (rb *RequestBuilder) WithPathParam(pathParams map[string]string) *RequestBu
 	return rb
 }
 
-func (rb *RequestBuilder) WithPathHeaders(headers map[string]string) *RequestBuilder {
+func (rb *RequestBuilder) WithHeaders(headers map[string]string) *RequestBuilder {
 	for h, val := range headers {
 		rb.request.Headers.Set(h, val)
 	}
@@ -155,14 +165,47 @@ func (rb *RequestBuilder) WithBearer(token string) *RequestBuilder {
 }
 
 func (rb *RequestBuilder) Execute() *Response {
-	if utils.IsEmpty(rb.request.Writer) {
-		log, _ := logger.New(logger.DefaultOptions())
-		rb.SetWriter(log)
+	rb.setDefaultWriter()
+	rb.setDefaultHeaders()
+	rb.setQueryParams()
+
+	httpClient := rb.client.httpClient
+	httpClient.Header = rb.request.Headers
+
+	if rb.request.Timeout > 0 {
+		httpClient.SetTimeout(rb.request.Timeout * time.Millisecond)
 	}
-	return rb.request.DoRequest(rb.request.Writer, rb.client)
+	httpClient.SetDebug(rb.request.DebugMode)
+	rb.client.httpClient = httpClient
+
+	return rb.request.DoRequest(rb.client)
+}
+
+func (rb *RequestBuilder) setDefaultWriter() {
+	if utils.IsEmpty(rb.request.Writer) {
+		rb.SetWriter(&logger.DefaultWriter{ID: rb.request.ID})
+	}
+}
+
+func (rb *RequestBuilder) setDefaultHeaders() {
+	if rb.request.Headers["Content-Type"] == nil && rb.request.Method != MethodGet {
+		rb.request.Headers.Set("Content-Type", "application/json")
+	}
+
+	if rb.request.ID != "" {
+		rb.request.Headers.Set("X-REQUEST-ID", rb.request.ID)
+	} else {
+		rb.request.Headers.Set("X-REQUEST-ID", uuid.New().String())
+	}
+}
+
+func (rb *RequestBuilder) setQueryParams() {
+	if rb.request.QueryParams != nil {
+		rb.client.httpClient.SetQueryParams(rb.request.QueryParams)
+	}
 }
 
 // ExecuteWithRetry soon...
 func (rb *RequestBuilder) ExecuteWithRetry(numberOfRetry int) *Response {
-	return rb.request.DoRequest(rb.request.Writer, rb.client)
+	return rb.request.DoRequest(rb.client)
 }

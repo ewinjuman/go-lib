@@ -5,14 +5,17 @@ import (
 	"fmt"
 	"github.com/ewinjuman/go-lib/v2/constant"
 	"github.com/ewinjuman/go-lib/v2/utils"
+	"github.com/gofiber/fiber/v2/log"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -30,7 +33,54 @@ const (
 )
 
 type Writer interface {
+	//LogRequest(message string)
+	//LogResponse(message string)
 	Print(string, ...interface{})
+}
+
+type DefaultWriter struct {
+	ID string
+}
+
+func sortHeaderKeys(hdrs http.Header) []string {
+	keys := make([]string, 0, len(hdrs))
+	for key := range hdrs {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+func composeHeaders(hdrs http.Header) string {
+	str := make([]string, 0, len(hdrs))
+	for _, k := range sortHeaderKeys(hdrs) {
+		str = append(str, "\t"+strings.TrimSpace(fmt.Sprintf("%25s: %s", k, strings.Join(hdrs[k], ", "))))
+	}
+	return strings.Join(str, "\n")
+}
+func (w *DefaultWriter) Print(message string, v ...interface{}) {
+	if len(v) < 2 {
+		return
+	}
+
+	if len(v) <= 5 {
+		reqLog := "\n==============================================================================\n" +
+			"**** REQUEST ****\n" +
+			fmt.Sprintf("%s\n", v[0]) +
+			fmt.Sprintf("URL    : %s\n", v[1]) +
+			fmt.Sprintf("HEADERS:\n%s\n", composeHeaders(v[3].(http.Header))) +
+			fmt.Sprintf("BODY   :\n%v\n", v[2]) +
+			"------------------------------------------------------------------------------\n"
+		log.Debug(reqLog)
+	} else if len(v) > 5 {
+		debugLog := "\n**** RESPONSE ****\n" +
+			fmt.Sprintf("STATUS       : %v\n", v[2].(int)) +
+			fmt.Sprintf("TIME DURATION: %v\n", v[5]) +
+			"HEADERS      :\n" +
+			composeHeaders(v[4].(http.Header)) + "\n" +
+			fmt.Sprintf("BODY         :\n%v\n", v[3])
+		log.Debug(debugLog)
+	}
+
 }
 
 // Options untuk konfigurasi logger
@@ -558,22 +608,10 @@ func (l *Logger) Print(s string, v ...interface{}) {
 	if len(v) < 2 {
 		return
 	}
-	switch v[0] {
-	case "sql":
-		delimiter := "/"
-		rightOfDelimiter := strings.Join(strings.Split(v[1].(string), delimiter)[4:], delimiter)
-		l.info(context.Background(), "",
-			zap.String("query", v[3].(string)),
-			zap.Any("values", v[4]),
-			zap.Float64("duration", float64(v[2].(time.Duration))/float64(time.Millisecond)),
-			zap.Int64("affected-rows", v[5].(int64)),
-			zap.String("source", rightOfDelimiter),
-		)
-	default:
-		l.info(context.Background(), s,
-			zap.Any("values", v),
-		)
-	}
+	l.info(context.Background(), s,
+		zap.Any("values", v),
+	)
+
 }
 
 // NewContext contoh untuk membuat appContext baru dengan request ID dan trace ID

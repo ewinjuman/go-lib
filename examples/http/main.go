@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/ewinjuman/go-lib/v2/appContext"
 	"github.com/ewinjuman/go-lib/v2/examples/helper"
-	"github.com/ewinjuman/go-lib/v2/http_v2"
+	"github.com/ewinjuman/go-lib/v2/http"
 	"github.com/ewinjuman/go-lib/v2/logger"
 )
 
@@ -24,7 +24,7 @@ func main() {
 	appCtx := appContext.New(helper.GetLogger())
 	response := &ResponseData{}
 	//var i int
-	err := http_v2.Get("http://localhost:3000", "/template").SetRequestID("setRequestID").
+	err := http.Get("http://localhost:3000", "/template").SetRequestID("setRequestID").
 		WithBasicAuth("ewin", "password").
 		WithQueryParam(map[string]string{"msisdn": "08123456", "deviceId": "8jdj8j3mmkldk"}).
 		Execute().Consume(response)

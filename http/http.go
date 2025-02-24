@@ -2,18 +2,15 @@ package http
 
 import (
 	"bytes"
-	"crypto/tls"
+	"context"
 	"encoding/base64"
-	"encoding/json"
-	"fmt"
-	"github.com/ewinjuman/go-lib/v2/appContext"
-	"net/http"
-	"strings"
-	"time"
+	"github.com/ewinjuman/go-lib/v2/logger"
+	"github.com/ewinjuman/go-lib/v2/utils"
+	"github.com/google/uuid"
 
-	Error "github.com/ewinjuman/go-lib/v2/error"
-	"github.com/ewinjuman/go-lib/v2/utils/convert"
-	"github.com/go-resty/resty/v2"
+	//"github.com/go-resty/resty/v2"
+	"net/http"
+	"time"
 )
 
 type Method string
@@ -31,175 +28,184 @@ func (v Method) String() string {
 	return string(v)
 }
 
-type RequestConfig struct {
-	Url         string
-	Method      Method
-	Headers     http.Header
-	Payload     interface{}
-	PathParams  map[string]string
-	QueryParams map[string]string
-	File        []MultipartData
-}
-
-type RestClient interface {
-	DefaultHeader(username, password string) http.Header
-	BasicAuth(username, password string) string
-	Execute(appCtx *appContext.AppContext, method Method, url string, headers http.Header, payload interface{}, pathParams map[string]string, queryParam map[string]string, file []MultipartData) (body []byte, statusCode int, err error)
-}
-
-func New(options Options) RestClient {
-	httpClient := resty.New()
-
-	if options.SkipTLS {
-		httpClient.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
+type (
+	MultipartData struct {
+		Key   string
+		Value string
+		File  *bytes.Reader
 	}
 
-	httpClient.SetTimeout(options.Timeout * time.Second)
-	httpClient.SetDebug(options.DebugMode)
+	Request struct {
+		logger.Writer
+		ID                    string
+		URL                   string
+		Method                Method
+		Body                  interface{}
+		File                  []MultipartData
+		PathParams            map[string]string
+		QueryParams           map[string]string
+		Headers               http.Header
+		Context               context.Context
+		Timeout               time.Duration
+		DebugMode             bool
+		SkipTLS               bool
+		TimeoutHystrix        int
+		MaxConcurrentRequests int
+		ErrorPercentThreshold int
+		ErrNotSuccess         bool
+	}
 
-	return &client{
-		//options:        options,
-		httpClient:     httpClient,
-		circuitBreaker: NewCircuitBreaker(),
+	RequestBuilder struct {
+		request Request
+		client  *reqClient
+		//requestManager RequestManager
+		//requestRetry   RequestRetry
+	}
+)
+
+func Do(method Method, host, path string) *RequestBuilder {
+	url := host + path
+	return &RequestBuilder{
+		request: Request{
+			URL:     url,
+			Method:  method,
+			Headers: http.Header{},
+		},
+		client: httpclient(),
+		//requestRetry:   &RequestRetryWhenTimeout{},
 	}
 }
 
-type client struct {
-	//options        Options
-	httpClient     *resty.Client
-	circuitBreaker *CircuitBreaker
+func Post(host, endpoint string) *RequestBuilder {
+	return Do(MethodPost, host, endpoint)
 }
 
-func (c *client) DefaultHeader(username, password string) http.Header {
-	headers := http.Header{}
-	headers.Set("Authorization", "Basic "+c.BasicAuth(username, password))
-	return headers
+func Get(host, endpoint string) *RequestBuilder {
+	return Do(MethodGet, host, endpoint)
 }
 
-func (c *client) BasicAuth(username, password string) string {
-	auth := username + ":" + password
-	return base64.StdEncoding.EncodeToString([]byte(auth))
+func Put(host, endpoint string) *RequestBuilder {
+	return Do(MethodPut, host, endpoint)
 }
 
-func (c *client) Execute(appCtx *appContext.AppContext, method Method, url string, headers http.Header, payload interface{}, pathParams map[string]string, queryParam map[string]string, file []MultipartData) (body []byte, statusCode int, err error) {
+func Delete(host, endpoint string) *RequestBuilder {
+	return Do(MethodDelete, host, endpoint)
+}
 
-	//if c.circuitBreaker == nil {
-	//	c.circuitBreaker = NewCircuitBreaker()
-	//}
+func Patch(host, endpoint string) *RequestBuilder {
+	return Do(MethodPatch, host, endpoint)
+}
 
-	//// Periksa apakah sirkuit diizinkan
-	//if err := c.circuitBreaker.Allow(); err != nil {
-	//	// Jika sirkuit terbuka, kembalikan error
-	//	return nil, 0, err
-	//}
+func Options(host, endpoint string) *RequestBuilder {
+	return Do(MethodOptions, host, endpoint)
+}
 
-	for key, value := range pathParams {
-		url = strings.ReplaceAll(url, fmt.Sprintf(":%s", key), value)
-	}
-	request := c.httpClient.R()
+func (rb *RequestBuilder) SetRequestID(requestID string) *RequestBuilder {
+	rb.request.ID = requestID
+	return rb
+}
 
-	// Set header
+func (rb *RequestBuilder) SetDebug(debug bool) *RequestBuilder {
+	rb.request.DebugMode = debug
+	return rb
+}
+
+func (rb *RequestBuilder) SetWriter(writer logger.Writer) *RequestBuilder {
+	rb.request.Writer = writer
+	return rb
+}
+
+func (rb *RequestBuilder) WithQueryParam(queryParams map[string]string) *RequestBuilder {
+	rb.request.QueryParams = queryParams
+	return rb
+}
+
+func (rb *RequestBuilder) WithPathParam(pathParams map[string]string) *RequestBuilder {
+	rb.request.PathParams = pathParams
+	return rb
+}
+
+func (rb *RequestBuilder) WithHeaders(headers map[string]string) *RequestBuilder {
 	for h, val := range headers {
-		request.Header[h] = val
+		rb.request.Headers.Set(h, val)
 	}
-	if headers["Content-Type"] == nil {
-		request.Header.Set("Content-Type", "application/json")
-	}
-	request.Header.Set("X-Request-ID", appCtx.RequestID)
-
-	if queryParam != nil {
-		request.SetQueryParams(queryParam)
-	}
-
-	// Set body
-	switch request.Header.Get("Content-Type") {
-	case "application/json":
-		request.SetBody(payload)
-		appCtx.Log().LogRequestHttp(appCtx.ToContext(), url, method.String(), request.Body, request.Header, request.QueryParam)
-	case "application/x-www-form-urlencoded", "multipart/form-data":
-		var formData map[string]string
-		convert.ObjectToObject(payload, &formData)
-		request.SetFormData(formData)
-		appCtx.Log().LogRequestHttp(appCtx.ToContext(), url, method.String(), request.FormData, request.Header, request.QueryParam)
-		if request.Header.Get("Content-Type") == "multipart/form-data" {
-			for _, val := range file {
-				request.SetFileReader(val.Key, val.Value, val.File)
-			}
-		}
-	}
-
-	// Execute rest
-	var result *resty.Response
-	var errExecute error
-	switch method {
-	case MethodPost:
-		result, errExecute = request.Post(url)
-	case MethodDelete:
-		result, errExecute = request.Delete(url)
-	case MethodGet:
-		result, errExecute = request.Get(url)
-	case MethodPut:
-		result, errExecute = request.Put(url)
-	case MethodOptions:
-		result, errExecute = request.Options(url)
-	case MethodPatch:
-		result, errExecute = request.Patch(url)
-	}
-	responseTime := result.Time()
-	// Check errExecute HTTP
-	if errExecute != nil {
-		//c.circuitBreaker.RecordFailure(errExecute)
-		if result != nil {
-			body = result.Body()
-		}
-		appCtx.Log().LogResponseHttp(appCtx.ToContext(), responseTime, statusCode, url, method.String(), body, errExecute)
-
-		err = errExecute
-		if Error.IsTimeout(errExecute) {
-			err = Error.ErrDeadlineExceeded
-		}
-		return
-	}
-
-	//c.circuitBreaker.RecordSuccess()
-
-	// Check,
-	if result != nil {
-		body = result.Body()
-	}
-
-	if result != nil && result.StatusCode() != 0 {
-		statusCode = result.StatusCode()
-	}
-
-	switch result.Header().Get("Content-Type") {
-	case "application/json":
-		var result interface{}
-		json.Unmarshal(body, &result)
-		appCtx.Log().LogResponseHttp(appCtx.ToContext(), responseTime, statusCode, url, method.String(), result, nil)
-	case "text/html":
-		appCtx.Log().LogResponseHttp(appCtx.ToContext(), responseTime, statusCode, url, method.String(), string(body), nil)
-	case "application/octet-stream":
-		appCtx.Log().LogResponseHttp(appCtx.ToContext(), responseTime, statusCode, url, method.String(), "", nil)
-	default:
-		var result interface{}
-		er := json.Unmarshal(body, &result)
-		if er != nil {
-			appCtx.Log().LogResponseHttp(appCtx.ToContext(), responseTime, statusCode, url, method.String(), string(body), nil)
-		} else {
-			appCtx.Log().LogResponseHttp(appCtx.ToContext(), responseTime, statusCode, url, method.String(), result, nil)
-		}
-	}
-
-	if statusCode == http.StatusOK {
-		return body, statusCode, nil
-	}
-
-	return body, statusCode, errExecute
+	return rb
 }
 
-type MultipartData struct {
-	Key   string
-	Value string
-	File  *bytes.Reader
+func (rb *RequestBuilder) WithBody(body interface{}) *RequestBuilder {
+	rb.request.Body = body
+	return rb
+}
+
+func (rb *RequestBuilder) WithFile(file []MultipartData) *RequestBuilder {
+	rb.request.File = file
+	return rb
+}
+
+func (rb *RequestBuilder) WithContext(ctx context.Context) *RequestBuilder {
+	rb.request.Context = ctx
+	return rb
+}
+
+func (rb *RequestBuilder) WithTimeout(timeout time.Duration) *RequestBuilder {
+	rb.request.Timeout = timeout
+	return rb
+}
+
+func (rb *RequestBuilder) WithBasicAuth(username, password string) *RequestBuilder {
+	auth := username + ":" + password
+	token := base64.StdEncoding.EncodeToString([]byte(auth))
+	rb.request.Headers.Set("Authorization", "Basic "+token)
+	return rb
+}
+
+func (rb *RequestBuilder) WithBearer(token string) *RequestBuilder {
+	rb.request.Headers.Set("Authorization", "Bearer "+token)
+	return rb
+}
+
+func (rb *RequestBuilder) Execute() *Response {
+	rb.setDefaultWriter()
+	rb.setDefaultHeaders()
+	rb.setQueryParams()
+
+	httpClient := rb.client.httpClient
+	httpClient.Header = rb.request.Headers
+
+	if rb.request.Timeout > 0 {
+		httpClient.SetTimeout(rb.request.Timeout * time.Millisecond)
+	}
+	httpClient.SetDebug(rb.request.DebugMode)
+	rb.client.httpClient = httpClient
+
+	return rb.request.doRequest(rb.client)
+}
+
+func (rb *RequestBuilder) setDefaultWriter() {
+	if utils.IsEmpty(rb.request.Writer) {
+		rb.SetWriter(&logger.DefaultWriter{ID: rb.request.ID})
+	}
+}
+
+func (rb *RequestBuilder) setDefaultHeaders() {
+	if rb.request.Headers["Content-Type"] == nil && rb.request.Method != MethodGet {
+		rb.request.Headers.Set("Content-Type", "application/json")
+	}
+
+	if rb.request.ID != "" {
+		rb.request.Headers.Set("X-REQUEST-ID", rb.request.ID)
+	} else {
+		rb.request.Headers.Set("X-REQUEST-ID", uuid.New().String())
+	}
+}
+
+func (rb *RequestBuilder) setQueryParams() {
+	if rb.request.QueryParams != nil {
+		rb.client.httpClient.SetQueryParams(rb.request.QueryParams)
+	}
+}
+
+// ExecuteWithRetry soon...
+func (rb *RequestBuilder) ExecuteWithRetry(numberOfRetry int) *Response {
+	return rb.request.doRequest(rb.client)
 }

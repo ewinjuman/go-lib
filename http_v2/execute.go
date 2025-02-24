@@ -27,7 +27,7 @@ func (r *Request) calculateResponseTime(resultRequest *resty.Response) time.Dura
 	return resultRequest.Time()
 }
 
-func (r *Request) DoRequest(client *ReqClient) (response *Response) {
+func (r *Request) doRequest(client *reqClient) (response *Response) {
 	response = &Response{}
 	request := client.httpClient.R()
 	url := r.prepareURL()
@@ -70,6 +70,7 @@ func (r *Request) prepareRequestBody(request *resty.Request, url string) {
 			}
 		}
 	}
+
 	r.Writer.Print("http_request", r.Method.String(), url, request.Body, r.Headers, r.QueryParams)
 }
 
@@ -113,8 +114,8 @@ func (r *Request) processResponse(response *Response, resultRequest *resty.Respo
 	response.StatusCode = resultRequest.StatusCode()
 	var result interface{}
 	if err := json.Unmarshal(response.Body, &result); err != nil {
-		r.Writer.Print("http_response", r.Method.String(), url, response.StatusCode, string(response.Body), resultRequest.Header(), responseTime)
+		r.Writer.Print("http_response", r.Method.String(), url, response.StatusCode, string(response.Body), resultRequest.Header(), responseTime, nil)
 	} else {
-		r.Writer.Print("http_response", r.Method.String(), url, response.StatusCode, result, resultRequest.Header(), responseTime)
+		r.Writer.Print("http_response", r.Method.String(), url, response.StatusCode, result, resultRequest.Header(), responseTime, nil)
 	}
 }

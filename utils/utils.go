@@ -78,3 +78,12 @@ func Must[T any](value T, err error) T {
 	}
 	return value
 }
+
+// delete the pointer from value
+func SafeDeref[T any](p *T) T {
+	if p == nil {
+		var v T
+		return v
+	}
+	return *p
+}

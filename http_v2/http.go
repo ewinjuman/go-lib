@@ -57,7 +57,7 @@ type (
 
 	RequestBuilder struct {
 		request Request
-		client  *ReqClient
+		client  *reqClient
 		//requestManager RequestManager
 		//requestRetry   RequestRetry
 	}
@@ -100,7 +100,7 @@ func Options(host, endpoint string) *RequestBuilder {
 	return Do(MethodOptions, host, endpoint)
 }
 
-func (rb *RequestBuilder) SetID(requestID string) *RequestBuilder {
+func (rb *RequestBuilder) SetRequestID(requestID string) *RequestBuilder {
 	rb.request.ID = requestID
 	return rb
 }
@@ -178,7 +178,7 @@ func (rb *RequestBuilder) Execute() *Response {
 	httpClient.SetDebug(rb.request.DebugMode)
 	rb.client.httpClient = httpClient
 
-	return rb.request.DoRequest(rb.client)
+	return rb.request.doRequest(rb.client)
 }
 
 func (rb *RequestBuilder) setDefaultWriter() {
@@ -207,5 +207,5 @@ func (rb *RequestBuilder) setQueryParams() {
 
 // ExecuteWithRetry soon...
 func (rb *RequestBuilder) ExecuteWithRetry(numberOfRetry int) *Response {
-	return rb.request.DoRequest(rb.client)
+	return rb.request.doRequest(rb.client)
 }

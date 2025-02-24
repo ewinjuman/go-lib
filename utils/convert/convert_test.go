@@ -1,6 +1,9 @@
 package convert
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 type InStruct struct {
 	ID string `json:"id"`
@@ -124,6 +127,9 @@ func TestConvertToWord(t *testing.T) {
 		{"1000000", args{number: 1000000}, "satu juta"},
 		{"1000000000", args{number: 1000000000}, "satu miliyar"},
 		{"1000000000000", args{number: 1000000000000}, "satu triliun"},
+		{"10000000000000", args{number: 10000000000000}, "sepuluh triliun"},
+		{"100000000000000", args{number: 100000000000000}, "seratus triliun"},
+		{"1000000000000000", args{number: 1000000000000000}, "satu kuadriliun"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -143,48 +149,12 @@ func TestConvertEng(t *testing.T) {
 		args args
 		want string
 	}{
-		{
-			"-1",
-			args{
-				number: -1,
-			},
-			"minus one",
-		},
-		{
-			"0",
-			args{
-				number: 0,
-			},
-			"zero",
-		},
-		{
-			"1",
-			args{
-				number: 1,
-			},
-			"one",
-		},
-		{
-			"12",
-			args{
-				number: 12,
-			},
-			"twelve",
-		},
-		{
-			"35",
-			args{
-				number: 35,
-			},
-			"thirty-five",
-		},
-		{
-			"135",
-			args{
-				number: 135,
-			},
-			"one hundred thirty-five",
-		},
+		{"-1", args{number: -1}, "minus one"},
+		{"0", args{number: 0}, "zero"},
+		{"1", args{number: 1}, "one"},
+		{"12", args{number: 12}, "twelve"},
+		{"35", args{number: 35}, "thirty-five"},
+		{"135", args{number: 135}, "one hundred thirty-five"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -204,18 +174,67 @@ func TestConvertEngAnd(t *testing.T) {
 		args args
 		want string
 	}{
-		{
-			"135",
-			args{
-				number: 135,
-			},
-			"one hundred and thirty-five",
-		},
+		{"135", args{number: 135}, "one hundred and thirty-five"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := ConvertEngAnd(tt.args.number); got != tt.want {
 				t.Errorf("ConvertEngAnd() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestConvertDateID(t *testing.T) {
+	tests := []struct {
+		name     string
+		date     time.Time
+		toFormat string
+		expected string
+	}{
+		{
+			name:     "Short format with English month name",
+			date:     time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC),
+			toFormat: "02-Jan-2006",
+			expected: "01-Okt-2023",
+		},
+		{
+			name:     "Long format with English month name",
+			date:     time.Date(2023, 2, 14, 0, 0, 0, 0, time.UTC),
+			toFormat: "02 January 2006",
+			expected: "14 Februari 2023",
+		},
+		{
+			name:     "Short format alternative with English month name",
+			date:     time.Date(2023, 8, 25, 0, 0, 0, 0, time.UTC),
+			toFormat: "2-Jan-2006",
+			expected: "25-Agu-2023",
+		},
+		{
+			name:     "Short format alternative without -",
+			date:     time.Date(2023, 8, 25, 0, 0, 0, 0, time.UTC),
+			toFormat: "2 Jan 2006",
+			expected: "25 Agu 2023",
+		},
+		{
+			name:     "Long format alternative with English month name",
+			date:     time.Date(2023, 12, 25, 0, 0, 0, 0, time.UTC),
+			toFormat: "2 January 2006",
+			expected: "25 Desember 2023",
+		},
+		{
+			name:     "Format without month replacement",
+			date:     time.Date(2023, 10, 31, 0, 0, 0, 0, time.UTC),
+			toFormat: "2006/01/02",
+			expected: "2023/10/31",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ConvertDateID(tt.date, tt.toFormat)
+			if result != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, result)
 			}
 		})
 	}

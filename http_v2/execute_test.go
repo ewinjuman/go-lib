@@ -63,7 +63,7 @@ func TestRequest_DoRequest(t *testing.T) {
 		request Request
 	}
 	type args struct {
-		httpClient *ReqClient
+		httpClient *reqClient
 	}
 	tests := []struct {
 		name      string
@@ -98,7 +98,7 @@ func TestRequest_DoRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.fields.request.Writer = getLogger()
-			if gotResponse := tt.fields.request.DoRequest(tt.args.httpClient); !tt.validator(gotResponse) {
+			if gotResponse := tt.fields.request.doRequest(tt.args.httpClient); !tt.validator(gotResponse) {
 				t.Errorf("DoRequest() = %v", gotResponse)
 			}
 		})

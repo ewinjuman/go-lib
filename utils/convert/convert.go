@@ -49,6 +49,7 @@ func ReadLines(path string) ([]string, error) {
 
 func ConvertDateID(date time.Time, toFormat string) string {
 	const (
+		formatShortA   = "02-Jan-2006"
 		formatShort    = "02-Jan-2006"
 		formatShortAlt = "2-Jan-2006"
 		formatLong     = "02 January 2006"
@@ -57,7 +58,6 @@ func ConvertDateID(date time.Time, toFormat string) string {
 
 	// Replace patterns for short month names
 	shortMonthReplacer := strings.NewReplacer(
-		"-", " ",
 		"May", "Mei",
 		"Aug", "Agu",
 		"Oct", "Okt",
@@ -93,7 +93,7 @@ func ConvertDateID(date time.Time, toFormat string) string {
 }
 
 const (
-	groupsNumber int = 5
+	groupsNumber int = 12
 )
 
 var _smallNumbers = []string{
@@ -105,9 +105,8 @@ var _smallNumbers = []string{
 
 var _scaleNumbers = []string{
 	"", "ribu", "juta", "miliyar", "triliun",
-}
-var _scaleSmallNumbers = []string{
-	"", "puluh", "ratus",
+	"kuadriliun", "kuintiliun", "sekstilion", "septiliun", "oktiliun",
+	"noniliun", "desiliun",
 }
 
 type digitGroup int
@@ -174,7 +173,6 @@ func convert(number int) string {
 	if number < 0 {
 		combined = "minus " + combined
 	}
-	//combined = strings.Replace(combined, "satu ribu", "seribu", -1)
 	return combined
 }
 

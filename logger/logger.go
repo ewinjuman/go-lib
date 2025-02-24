@@ -2,6 +2,7 @@ package logger
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/ewinjuman/go-lib/v2/constant"
 	"github.com/ewinjuman/go-lib/v2/utils"
@@ -35,7 +36,7 @@ const (
 type Writer interface {
 	//LogRequest(message string)
 	//LogResponse(message string)
-	Print(string, ...interface{})
+	Print(message string, value ...interface{})
 }
 
 type DefaultWriter struct {
@@ -57,27 +58,40 @@ func composeHeaders(hdrs http.Header) string {
 	}
 	return strings.Join(str, "\n")
 }
-func (w *DefaultWriter) Print(message string, v ...interface{}) {
-	if len(v) < 2 {
+
+// if message == "http_request" ==> [0] = http Method, [1] = url, [2] = request body, [3] = http.Header, [4] = query param
+// if message == "http_response" ==> [0] = http Method, [1] = url, [2] = response.StatusCode, [3] = response.Body, [4] = resultRequest.Header, [5] =  response Time, [6] = error
+func (w *DefaultWriter) Print(message string, value ...interface{}) {
+	if len(value) < 2 {
 		return
 	}
 
-	if len(v) <= 5 {
+	if message == "http_request" {
+		var jsonRequest interface{}
+		if value[2] != nil {
+			js, _ := json.Marshal(value[2])
+			jsonRequest = string(js)
+		}
 		reqLog := "\n==============================================================================\n" +
 			"**** REQUEST ****\n" +
-			fmt.Sprintf("%s\n", v[0]) +
-			fmt.Sprintf("URL    : %s\n", v[1]) +
-			fmt.Sprintf("HEADERS:\n%s\n", composeHeaders(v[3].(http.Header))) +
-			fmt.Sprintf("BODY   :\n%v\n", v[2]) +
+			fmt.Sprintf("%s\n", value[0]) +
+			fmt.Sprintf("URL    : %s\n", value[1]) +
+			fmt.Sprintf("HEADERS:\n%s\n", composeHeaders(value[3].(http.Header))) +
+			fmt.Sprintf("BODY   :\n%v\n", jsonRequest) +
 			"------------------------------------------------------------------------------\n"
 		log.Debug(reqLog)
-	} else if len(v) > 5 {
+	} else if message == "http_response" {
+		var jsonResponse interface{}
+		if value[3] != nil {
+			js, _ := json.Marshal(value[3])
+			jsonResponse = string(js)
+		}
 		debugLog := "\n**** RESPONSE ****\n" +
-			fmt.Sprintf("STATUS       : %v\n", v[2].(int)) +
-			fmt.Sprintf("TIME DURATION: %v\n", v[5]) +
+			fmt.Sprintf("STATUS       : %v\n", value[2].(int)) +
+			fmt.Sprintf("TIME DURATION: %v\n", value[5]) +
 			"HEADERS      :\n" +
-			composeHeaders(v[4].(http.Header)) + "\n" +
-			fmt.Sprintf("BODY         :\n%v\n", v[3])
+			composeHeaders(value[4].(http.Header)) + "\n" +
+			fmt.Sprintf("BODY         :\n%v\n", jsonResponse)
 		log.Debug(debugLog)
 	}
 

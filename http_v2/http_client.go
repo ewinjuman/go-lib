@@ -6,18 +6,18 @@ import (
 	"time"
 )
 
-type ReqClient struct {
+type reqClient struct {
 	httpClient     *resty.Client
 	circuitBreaker *CircuitBreaker
 }
 
-func httpclient() *ReqClient {
+func httpclient() *reqClient {
 	httpClient := resty.New()
 	httpClient.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
 
 	httpClient.SetTimeout(5 * time.Second)
 	httpClient.SetDebug(false)
-	return &ReqClient{
+	return &reqClient{
 		httpClient:     httpClient,
 		circuitBreaker: NewCircuitBreaker(),
 	}

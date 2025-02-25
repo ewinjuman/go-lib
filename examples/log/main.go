@@ -67,8 +67,8 @@ func main() {
 		Password string `json:"password"`
 	}{
 		ID:       "123",
-		Email:    "user@example.com",
-		Token:    "902930230",
+		Email:    "usAer@exAmple.Com",
+		Token:    "902jdsaljldsjaldjlasjdlsdjlasjdasdlasjdlajdsadljaslnvnbvkasdjasjdakd;askd;kas;dka;k;930230",
 		Password: "password",
 	}
 

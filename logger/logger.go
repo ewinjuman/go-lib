@@ -596,7 +596,7 @@ func (l *Logger) maskStringIfNeeded(key string, value string) string {
 			if len(value) > 8 && len(value) <= 50 {
 				return strings.Repeat("*", len(value)-4) + value[len(value)-4:]
 			} else if len(value) > 50 {
-				return strings.Repeat("*", 40) + value[len(value)-4:]
+				return value[0:4] + strings.Repeat("*", 20) + value[len(value)-4:]
 			}
 			return strings.Repeat("*", len(value))
 		}

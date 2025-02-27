@@ -604,17 +604,11 @@ func (l *Logger) maskStringIfNeeded(key string, value string) string {
 	return value
 }
 
-func (l *Logger) Printf(s string, v ...interface{}) {
-	if len(v) == 4 {
-		l.info(context.Background(), "",
-			zap.String("query", v[3].(string)),
-			zap.String("duration ", fmt.Sprintf("%.3fms", v[1].(float64))),
-			zap.Int64("affected-rows", v[2].(int64)),
-			zap.String("source", v[0].(string)),
-		)
-	} else {
-		l.info(context.Background(), "",
-			zap.Any("value", v),
+func (l *Logger) Printf(format string, v ...interface{}) {
+	if len(v) > 1 {
+		fm := fmt.Sprintf(format, v...)
+		l.info(context.Background(), "ORM LOG",
+			zap.Any("value", fm),
 		)
 	}
 }

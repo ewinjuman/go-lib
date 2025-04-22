@@ -31,6 +31,12 @@ func StringToObject(in string, out interface{}) {
 	return
 }
 
+// convert string to object
+func ByteToObject(in []byte, out interface{}) {
+	json.Unmarshal(in, &out)
+	return
+}
+
 // Read Perlines from file
 func ReadLines(path string) ([]string, error) {
 	file, err := os.Open(path)

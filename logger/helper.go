@@ -18,20 +18,38 @@ func isValidEmail(email string) bool {
 	return emailRegex.MatchString(email)
 }
 
+//func maskEmail(email string) string {
+//	// Memisahkan username dan domain
+//	parts := strings.Split(email, "@")
+//	if len(parts) != 2 {
+//		return email
+//	}
+//
+//	// Masking username
+//	username := parts[0]
+//	if len(username) > 2 {
+//		maskedUsername := username[0:1] + strings.Repeat("*", len(username)-2) + username[len(username)-1:]
+//		return fmt.Sprintf("%s@%s", maskedUsername, parts[1])
+//	} else {
+//		return fmt.Sprintf("%s@%s", strings.Repeat("*", len(username)), parts[0])
+//	}
+//	return email
+//}
+
 func maskEmail(email string) string {
-	// Memisahkan username dan domain
 	parts := strings.Split(email, "@")
 	if len(parts) != 2 {
-		return email
+		return strings.Repeat("*", len(email))
 	}
 
-	// Masking username
 	username := parts[0]
-	if len(username) > 2 {
-		maskedUsername := username[0:1] + strings.Repeat("*", len(username)-2) + username[len(username)-1:]
-		return fmt.Sprintf("%s@%s", maskedUsername, parts[1])
-	} else {
-		return fmt.Sprintf("%s@%s", strings.Repeat("*", len(username)), parts[0])
+	domain := parts[1]
+
+	if len(username) <= 2 {
+		maskedUsername := strings.Repeat("*", len(username))
+		return maskedUsername + "@" + domain
 	}
-	return email
+
+	maskedUsername := username[0:1] + strings.Repeat("*", len(username)-2) + username[len(username)-1:]
+	return maskedUsername + "@" + domain
 }

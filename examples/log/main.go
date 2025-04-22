@@ -73,7 +73,10 @@ func main() {
 	}
 
 	start := time.Now()
-	appCtx := appContext.New(GetLogger())
+	log := GetLogger()
+	appCtx := appContext.New(log)
+	defer log.Shutdown()
+
 	//appCtx.SetRequestID("requestID") // set if needed
 	appCtx.LogInfo("Start", logger.String("user", "kamu"), logger.String("token", "udhs908711"))
 	appCtx.LogInfo("print struct", logger.Interface("user", user))

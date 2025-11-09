@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 )
 
 type Response struct {
@@ -23,11 +22,7 @@ func (r *Response) Consume(v interface{}) error {
 		return r.Error
 	}
 
-	if r.StatusCode < 200 || r.StatusCode > 299 {
-		log.Println("statusCode", r.StatusCode)
-		log.Println("body", r.Body)
-		log.Println("Error when make Request")
-
+	if r.StatusCode < 200 || r.StatusCode >= 300 {
 		body := ""
 		if r.Body != nil {
 			body = string(r.Body)
@@ -51,4 +46,18 @@ func (r *Response) Consume(v interface{}) error {
 	}
 
 	return nil
+}
+
+func (r *Response) IsSuccess() bool {
+	return r.StatusCode >= 200 && r.StatusCode < 300
+}
+func (r *Response) IsError() (bool, error) {
+	if r.Error != nil {
+		return true, r.Error
+	}
+	return r.StatusCode < 200 || r.StatusCode >= 300, r.Error
+}
+
+func (r *Response) HttpCode() int {
+	return r.StatusCode
 }

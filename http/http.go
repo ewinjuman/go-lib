@@ -3,7 +3,9 @@ package http
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/base64"
+
 	"github.com/ewinjuman/go-lib/v2/logger"
 	"github.com/ewinjuman/go-lib/v2/utils"
 	"github.com/google/uuid"
@@ -53,6 +55,7 @@ type (
 		MaxConcurrentRequests int
 		ErrorPercentThreshold int
 		ErrNotSuccess         bool
+		HTTPSuccessCode       []int
 	}
 
 	RequestBuilder struct {
@@ -67,9 +70,10 @@ func Do(method Method, host, path string) *RequestBuilder {
 	url := host + path
 	return &RequestBuilder{
 		request: Request{
-			URL:     url,
-			Method:  method,
-			Headers: http.Header{},
+			URL:             url,
+			Method:          method,
+			Headers:         http.Header{},
+			HTTPSuccessCode: []int{200},
 		},
 		client: httpclient(),
 		//requestRetry:   &RequestRetryWhenTimeout{},
@@ -115,6 +119,10 @@ func (rb *RequestBuilder) SetWriter(writer logger.Writer) *RequestBuilder {
 	return rb
 }
 
+func (rb *RequestBuilder) SkipTls() *RequestBuilder {
+	rb.request.SkipTLS = true
+	return rb
+}
 func (rb *RequestBuilder) WithQueryParam(queryParams map[string]string) *RequestBuilder {
 	rb.request.QueryParams = queryParams
 	return rb
@@ -164,6 +172,13 @@ func (rb *RequestBuilder) WithBearer(token string) *RequestBuilder {
 	return rb
 }
 
+func (rb *RequestBuilder) HttpSuccessCode(code []int) *RequestBuilder {
+	if len(code) > 0 {
+		rb.request.HTTPSuccessCode = code
+	}
+	return rb
+}
+
 func (rb *RequestBuilder) Execute() *Response {
 	rb.setDefaultWriter()
 	rb.setDefaultHeaders()
@@ -175,6 +190,11 @@ func (rb *RequestBuilder) Execute() *Response {
 	if rb.request.Timeout > 0 {
 		httpClient.SetTimeout(rb.request.Timeout * time.Millisecond)
 	}
+	if rb.request.SkipTLS {
+		httpClient.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
+	}
+
+	//fmt.Println("debug mode", rb.request.DebugMode)
 	httpClient.SetDebug(rb.request.DebugMode)
 	rb.client.httpClient = httpClient
 

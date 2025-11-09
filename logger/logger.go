@@ -4,13 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/ewinjuman/go-lib/v2/constant"
-	"github.com/ewinjuman/go-lib/v2/utils"
-	"github.com/gofiber/fiber/v2/log"
-	"github.com/google/uuid"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-	"gopkg.in/natefinch/lumberjack.v2"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,6 +13,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ewinjuman/go-lib/v2/constant"
+	"github.com/ewinjuman/go-lib/v2/utils"
+	"github.com/gofiber/fiber/v2/log"
+	"github.com/google/uuid"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // Level type untuk custom log levels
@@ -51,7 +52,7 @@ type LogEntry struct {
 
 // Writer interface
 type Writer interface {
-	Print(message string, value ...interface{})
+	Print(ctx context.Context, message string, value ...interface{})
 }
 
 type DefaultWriter struct {
@@ -77,7 +78,7 @@ func composeHeaders(hdrs http.Header) string {
 
 // if message == "http_request" ==> [0] = http Method, [1] = url, [2] = request body, [3] = http.Header, [4] = query param
 // if message == "http_response" ==> [0] = http Method, [1] = url, [2] = response.StatusCode, [3] = response.Body, [4] = resultRequest.Header, [5] =  response Time, [6] = error
-func (w *DefaultWriter) Print(message string, value ...interface{}) {
+func (w *DefaultWriter) Print(ctx context.Context, message string, value ...interface{}) {
 	if len(value) < 2 {
 		return
 	}

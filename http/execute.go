@@ -2,13 +2,15 @@ package http
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
-	Error "github.com/ewinjuman/go-lib/v2/error"
-	"github.com/ewinjuman/go-lib/v2/utils/convert"
-	"github.com/go-resty/resty/v2"
 	"regexp"
 	"strings"
 	"time"
+
+	Error "github.com/ewinjuman/go-lib/v2/error"
+	"github.com/ewinjuman/go-lib/v2/utils/convert"
+	"github.com/go-resty/resty/v2"
 )
 
 var (
@@ -71,7 +73,7 @@ func (r *Request) prepareRequestBody(request *resty.Request, url string) {
 		}
 	}
 
-	r.Writer.Print("http_request", r.Method.String(), url, request.Body, r.Headers, r.QueryParams)
+	r.Writer.Print(r.Context, "http_request", r.Method.String(), url, request.Body, r.Headers, r.QueryParams)
 }
 
 // executeRequest sends the prepared HTTP request based on the method
@@ -104,18 +106,30 @@ func (r *Request) handleError(response *Response, resultRequest *resty.Response,
 	if resultRequest != nil {
 		response.Body = resultRequest.Body()
 	}
-	r.Writer.Print("http_response", r.Method.String(), url, response.StatusCode, response.Body, resultRequest.Header(), responseTime, err)
+	r.Writer.Print(r.Context, "http_response", r.Method.String(), url, response.StatusCode, response.Body, resultRequest.Header(), responseTime, err)
 	return response
 }
 
-// processResponse unmarshals and processes the response body on success
+// processResponse unmarshal and processes the response body on success
 func (r *Request) processResponse(response *Response, resultRequest *resty.Response, url string, responseTime time.Duration) {
 	response.Body = resultRequest.Body()
 	response.StatusCode = resultRequest.StatusCode()
 	var result interface{}
-	if err := json.Unmarshal(response.Body, &result); err != nil {
-		r.Writer.Print("http_response", r.Method.String(), url, response.StatusCode, string(response.Body), resultRequest.Header(), responseTime, nil)
-	} else {
-		r.Writer.Print("http_response", r.Method.String(), url, response.StatusCode, result, resultRequest.Header(), responseTime, nil)
+	contentType := resultRequest.Header().Get("Content-Type")
+	fmt.Println("contentType:", contentType)
+	switch contentType {
+	case "application/xml; charset=utf-8":
+		if err := xml.Unmarshal(response.Body, &result); err != nil {
+			r.Writer.Print(r.Context, "http_response", r.Method.String(), url, response.StatusCode, string(response.Body), resultRequest.Header(), responseTime, nil)
+		} else {
+			r.Writer.Print(r.Context, "http_response", r.Method.String(), url, response.StatusCode, result, resultRequest.Header(), responseTime, nil)
+		}
+	default:
+		if err := json.Unmarshal(response.Body, &result); err != nil {
+			r.Writer.Print(r.Context, "http_response", r.Method.String(), url, response.StatusCode, string(response.Body), resultRequest.Header(), responseTime, nil)
+		} else {
+			r.Writer.Print(r.Context, "http_response", r.Method.String(), url, response.StatusCode, result, resultRequest.Header(), responseTime, nil)
+		}
 	}
+
 }

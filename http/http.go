@@ -80,6 +80,19 @@ func Do(method Method, host, path string) *RequestBuilder {
 	}
 }
 
+func DoFullPath(method Method, url string) *RequestBuilder {
+	return &RequestBuilder{
+		request: Request{
+			URL:             url,
+			Method:          method,
+			Headers:         http.Header{},
+			HTTPSuccessCode: []int{200},
+		},
+		client: httpclient(),
+		//requestRetry:   &RequestRetryWhenTimeout{},
+	}
+}
+
 func Post(host, endpoint string) *RequestBuilder {
 	return Do(MethodPost, host, endpoint)
 }
@@ -102,6 +115,30 @@ func Patch(host, endpoint string) *RequestBuilder {
 
 func Options(host, endpoint string) *RequestBuilder {
 	return Do(MethodOptions, host, endpoint)
+}
+
+func PostWithURL(url string) *RequestBuilder {
+	return DoFullPath(MethodPost, url)
+}
+
+func GetWithURL(url string) *RequestBuilder {
+	return DoFullPath(MethodGet, url)
+}
+
+func PutWithURL(url string) *RequestBuilder {
+	return DoFullPath(MethodPut, url)
+}
+
+func DeleteWithURL(url string) *RequestBuilder {
+	return DoFullPath(MethodDelete, url)
+}
+
+func PatchWithURL(url string) *RequestBuilder {
+	return DoFullPath(MethodPatch, url)
+}
+
+func OptionsWithURL(url string) *RequestBuilder {
+	return DoFullPath(MethodOptions, url)
 }
 
 func (rb *RequestBuilder) SetRequestID(requestID string) *RequestBuilder {

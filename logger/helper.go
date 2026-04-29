@@ -1,17 +1,9 @@
 package logger
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
-	"time"
 )
-
-func getLogFilename(basePath string) string {
-	return fmt.Sprintf("%s-%s.log",
-		strings.TrimSuffix(basePath, ".log"),
-		time.Now().Format("2006-01-02"))
-}
 
 func isValidEmail(email string) bool {
 	emailRegex := regexp.MustCompile(`^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,4}$`)

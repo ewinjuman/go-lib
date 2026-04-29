@@ -21,7 +21,11 @@ func TestGeneratePassword(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := GeneratePassword(tt.args.password); (got != "") != tt.notEmpty {
+			got, err := GeneratePassword(tt.args.password)
+			if err != nil {
+				t.Fatalf("GeneratePassword() unexpected error: %v", err)
+			}
+			if (got != "") != tt.notEmpty {
 				t.Errorf("GeneratePassword() = %v, want %v", (got != ""), tt.notEmpty)
 			}
 		})

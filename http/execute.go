@@ -116,7 +116,6 @@ func (r *Request) processResponse(response *Response, resultRequest *resty.Respo
 	response.StatusCode = resultRequest.StatusCode()
 	var result interface{}
 	contentType := resultRequest.Header().Get("Content-Type")
-	fmt.Println("contentType:", contentType)
 	switch contentType {
 	case "application/xml; charset=utf-8":
 		if err := xml.Unmarshal(response.Body, &result); err != nil {

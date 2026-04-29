@@ -54,14 +54,6 @@ func ReadLines(path string) ([]string, error) {
 }
 
 func ConvertDateID(date time.Time, toFormat string) string {
-	const (
-		formatShortA   = "02-Jan-2006"
-		formatShort    = "02-Jan-2006"
-		formatShortAlt = "2-Jan-2006"
-		formatLong     = "02 January 2006"
-		formatLongAlt  = "2 January 2006"
-	)
-
 	// Replace patterns for short month names
 	shortMonthReplacer := strings.NewReplacer(
 		"May", "Mei",
@@ -89,10 +81,10 @@ func ConvertDateID(date time.Time, toFormat string) string {
 	result := date.Format(toFormat)
 
 	switch {
-	case strings.Contains(toFormat, formatShort) || strings.Contains(toFormat, formatShortAlt):
-		return shortMonthReplacer.Replace(result)
-	case strings.Contains(toFormat, formatLong) || strings.Contains(toFormat, formatLongAlt):
+	case strings.Contains(toFormat, "January"):
 		return longMonthReplacer.Replace(result)
+	case strings.Contains(toFormat, "Jan"):
+		return shortMonthReplacer.Replace(result)
 	}
 
 	return result

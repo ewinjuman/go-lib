@@ -152,17 +152,10 @@ type Logger struct {
 	flushCh    chan struct{}
 	wg         sync.WaitGroup
 
-	// Dedicated goroutine pool untuk processing masking
-	maskingPool chan func()
-
 	// Cache untuk path masking matching (optimasi)
 	maskingCache sync.Map
 }
 
-func (l *Logger) Write(p []byte) (n int, err error) {
-	//TODO implement me
-	panic("implement me")
-}
 
 // DefaultOptions mengembalikan default configuration
 func DefaultOptions() Options {
@@ -186,24 +179,35 @@ func DefaultOptions() Options {
 
 // New membuat instance logger baru
 func New(opts Options) (*Logger, error) {
-	// Merge dengan default options
-	defaultOpts := DefaultOptions()
-	if opts.AppName != "" {
-		defaultOpts.AppName = opts.AppName
+	// Apply defaults for unset fields
+	defaults := DefaultOptions()
+	if opts.AppName == "" {
+		opts.AppName = defaults.AppName
 	}
-	if opts.Environment != "" {
-		defaultOpts.Environment = opts.Environment
+	if opts.Environment == "" {
+		opts.Environment = defaults.Environment
+	}
+	if opts.Level == "" {
+		opts.Level = defaults.Level
+	}
+	if opts.MaxSize <= 0 {
+		opts.MaxSize = defaults.MaxSize
+	}
+	if opts.MaxBackups <= 0 {
+		opts.MaxBackups = defaults.MaxBackups
+	}
+	if opts.MaxAge <= 0 {
+		opts.MaxAge = defaults.MaxAge
 	}
 	if opts.BufferSize <= 0 {
-		opts.BufferSize = DefaultBufferSize
+		opts.BufferSize = defaults.BufferSize
 	}
 	if opts.FlushInterval <= 0 {
-		opts.FlushInterval = DefaultFlushInterval
+		opts.FlushInterval = defaults.FlushInterval
 	}
 	if opts.WorkerPoolSize <= 0 {
-		opts.WorkerPoolSize = DefaultWorkerPoolSize
+		opts.WorkerPoolSize = defaults.WorkerPoolSize
 	}
-	// ... merge other options
 
 	// Setup cores
 	var cores []zapcore.Core
@@ -312,37 +316,15 @@ func New(opts Options) (*Logger, error) {
 		logBuffer:     make(chan LogEntry, opts.BufferSize),
 		shutdownCh:    make(chan struct{}),
 		flushCh:       make(chan struct{}),
-		maskingPool:   make(chan func(), opts.WorkerPoolSize),
 	}
 
 	// Start async processing if not disabled
 	if !opts.DisableAsync {
-		// Start worker pools
-		for i := 0; i < opts.WorkerPoolSize; i++ {
-			logger.wg.Add(1)
-			go logger.maskingWorker()
-		}
-
-		// Start log processor goroutine
 		logger.wg.Add(1)
 		go logger.processLogEntries()
 	}
 
 	return logger, nil
-}
-
-// maskingWorker is a dedicated worker for masking operations
-func (l *Logger) maskingWorker() {
-	defer l.wg.Done()
-
-	for {
-		select {
-		case task := <-l.maskingPool:
-			task()
-		case <-l.shutdownCh:
-			return
-		}
-	}
 }
 
 // processLogEntries processes buffered log entries asynchronously
@@ -802,12 +784,12 @@ func (l *Logger) Printf(format string, v ...interface{}) {
 	}
 }
 
-// Print implementasi untuk kompatibilitas dengan library lain
-func (l *Logger) Print(s string, v ...interface{}) {
+// Print implementasi untuk kompatibilitas dengan library lain dan Writer interface
+func (l *Logger) Print(ctx context.Context, s string, v ...interface{}) {
 	if len(v) < 2 {
 		return
 	}
-	l.Info(context.Background(), s, Interface("values", v))
+	l.Info(ctx, s, Interface("values", v))
 }
 
 // NewContext menciptakan context baru dengan request ID dan trace ID
@@ -820,4 +802,28 @@ func NewContext() context.Context {
 	ctx = context.WithValue(ctx, constant.TraceIDKey, traceID)
 
 	return ctx
+}
+
+var (
+	instance *Logger
+	once     sync.Once
+)
+
+// InitLogger initializes the global singleton logger. Safe to call multiple times; only the first call takes effect.
+func InitLogger(opts Options) {
+	once.Do(func() {
+		logger, err := New(opts)
+		if err != nil {
+			panic(err)
+		}
+		instance = logger
+	})
+}
+
+// GetLogger returns the global singleton logger, initializing with defaults if not yet set.
+func GetLogger() *Logger {
+	if instance == nil {
+		InitLogger(DefaultOptions())
+	}
+	return instance
 }

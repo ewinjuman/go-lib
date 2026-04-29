@@ -134,13 +134,6 @@ func setContextIfNotZeroTime(ctx context.Context, key interface{}, value time.Ti
 	return ctx
 }
 
-// Helper function untuk mengecek interface{} tidak nil
-func setContextIfNotNil(ctx context.Context, key interface{}, value interface{}) context.Context {
-	if value != nil {
-		return context.WithValue(ctx, key, value)
-	}
-	return ctx
-}
 
 func (ac *AppContext) Get(key string, defaultValue ...interface{}) (data interface{}) {
 	data, ok := ac.cMap.Get(key)

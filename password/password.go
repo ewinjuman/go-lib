@@ -8,21 +8,12 @@ func NormalizePassword(p string) []byte {
 }
 
 // GeneratePassword func for a making hash & salt with user password.
-func GeneratePassword(p string) string {
-	// Normalize password from string to []byte.
-	bytePwd := NormalizePassword(p)
-
-	// MinCost is just an integer constant provided by the bcrypt package
-	// along with DefaultCost & MaxCost. The cost can be any value
-	// you want provided it isn't lower than the MinCost (4).
-	hash, err := bcrypt.GenerateFromPassword(bytePwd, bcrypt.MinCost)
+func GeneratePassword(p string) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword(NormalizePassword(p), bcrypt.DefaultCost)
 	if err != nil {
-		return ""
+		return "", err
 	}
-
-	// GenerateFromPassword returns a byte slice, so we need to
-	// convert the bytes to a string and return it.
-	return string(hash)
+	return string(hash), nil
 }
 
 // ComparePasswords func for a comparing password.

@@ -48,6 +48,7 @@ type LogEntry struct {
 	Fields    []Field
 	Context   context.Context
 	Timestamp time.Time
+	Caller    string // captured at call site, before async dispatch
 }
 
 // Writer interface
@@ -382,8 +383,10 @@ func (l *Logger) processLogEntry(entry LogEntry) {
 	// Convert fields
 	zapFields := l.convertToZapFields(entry.Fields)
 
-	// Add caller information
-	zapFields = append(zapFields, zap.String("caller", utils.FileWithLineNum()))
+	// Add caller information (captured at call site to survive async dispatch)
+	if entry.Caller != "" {
+		zapFields = append(zapFields, zap.String("caller", entry.Caller))
+	}
 
 	// Get zap logger with context
 	logger := l.WithContext(entry.Context)
@@ -628,13 +631,17 @@ func (l *Logger) sendLogAsync(level Level, ctx context.Context, msg string, fiel
 		ctx = context.Background()
 	}
 
-	// Buat entry
+	// Capture caller now, while user's call stack is still present.
+	// If captured inside the async goroutine, the user stack is gone.
+	caller := utils.FileWithLineNum()
+
 	entry := LogEntry{
 		Level:     level,
 		Message:   msg,
 		Fields:    fields,
 		Context:   ctx,
 		Timestamp: time.Now(),
+		Caller:    caller,
 	}
 
 	// Special case untuk Fatal - selalu syncronous

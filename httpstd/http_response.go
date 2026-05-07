@@ -1,4 +1,4 @@
-package http
+package httpstd
 
 import (
 	"encoding/json"

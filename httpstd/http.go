@@ -1,4 +1,4 @@
-package http
+package httpstd
 
 import (
 	"bytes"
@@ -68,7 +68,7 @@ func Do(method Method, url string) *RequestBuilder {
 			Headers:         http.Header{},
 			HTTPSuccessCode: []int{200},
 		},
-		client: httpclient(),
+		client: newClient(),
 	}
 }
 
@@ -170,20 +170,15 @@ func (rb *RequestBuilder) WithCircuitBreakerConfig(cfg CircuitBreakerConfig) *Re
 func (rb *RequestBuilder) Execute() *Response {
 	rb.setDefaultWriter()
 	rb.setDefaultHeaders()
-	rb.setQueryParams()
-
-	httpClient := rb.client.httpClient
-	httpClient.Header = rb.request.Headers
 
 	if rb.request.Timeout > 0 {
-		httpClient.SetTimeout(rb.request.Timeout)
+		rb.client.httpClient.Timeout = rb.request.Timeout
 	}
 	if rb.request.SkipTLS {
-		httpClient.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
+		rb.client.httpClient.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
 	}
-
-	httpClient.SetDebug(rb.request.DebugMode)
-	rb.client.httpClient = httpClient
 
 	return rb.request.doRequest(rb.client)
 }
@@ -202,11 +197,5 @@ func (rb *RequestBuilder) setDefaultHeaders() {
 		rb.request.Headers.Set("X-REQUEST-ID", rb.request.ID)
 	} else {
 		rb.request.Headers.Set("X-REQUEST-ID", uuid.New().String())
-	}
-}
-
-func (rb *RequestBuilder) setQueryParams() {
-	if rb.request.QueryParams != nil {
-		rb.client.httpClient.SetQueryParams(rb.request.QueryParams)
 	}
 }

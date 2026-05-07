@@ -1,4 +1,4 @@
-package http
+package httpstd
 
 import (
 	"errors"
@@ -12,7 +12,8 @@ import (
 var (
 	ErrCircuitOpen     = errors.New("circuit breaker is open")
 	ErrAppsCircuitOpen = Error.NewError(123, "FAILED", "circuit breaker is open")
-	cbRegistry         sync.Map // map[string]*CircuitBreaker, keyed by scheme://host
+
+	cbRegistry sync.Map // map[string]*CircuitBreaker, keyed by scheme://host
 )
 
 // CircuitBreakerConfig holds tunable parameters for a circuit breaker.
@@ -85,7 +86,6 @@ func (cb *CircuitBreaker) Allow() error {
 		if time.Since(cb.lastFailureTime) < cb.recoveryTimeout {
 			return ErrAppsCircuitOpen
 		}
-		// Transition to HALF_OPEN: reset counters to evaluate fresh
 		cb.state = "HALF_OPEN"
 		cb.failureCount = 0
 		cb.totalRequestCount = 0
@@ -104,7 +104,6 @@ func (cb *CircuitBreaker) RecordSuccess() {
 		cb.state = "CLOSED"
 		cb.failureCount = 0
 		cb.totalRequestCount = 0
-		return
 	}
 }
 

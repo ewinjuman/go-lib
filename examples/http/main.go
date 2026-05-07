@@ -24,7 +24,7 @@ func main() {
 	appCtx := appContext.New(helper.GetLogger())
 	response := &ResponseData{}
 	//var i int
-	err := http.Get("http://localhost:3000", "/template").SetRequestID("setRequestID").
+	err := http.Get("http://localhost:3000/template").WithRequestID("setRequestID").
 		WithBasicAuth("ewin", "password").
 		WithQueryParam(map[string]string{"msisdn": "08123456", "deviceId": "8jdj8j3mmkldk"}).
 		Execute().Consume(response)

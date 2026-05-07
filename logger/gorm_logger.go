@@ -4,13 +4,12 @@ import (
 	"context"
 	"fmt"
 	"time"
-	
+
 	gormlogger "gorm.io/gorm/logger"
 )
 
 // GormLogger is a custom logger for GORM that doesn't block
 type GormLogger struct {
-	ctx                       context.Context
 	Logger                    *Logger
 	SlowThreshold             time.Duration
 	LogLevel                  gormlogger.LogLevel
@@ -19,9 +18,8 @@ type GormLogger struct {
 }
 
 // NewGormLogger creates a new non-blocking GORM logger
-func NewGormLogger(ctx context.Context, logger *Logger, config gormlogger.Config) *GormLogger {
+func NewGormLogger(logger *Logger, config gormlogger.Config) *GormLogger {
 	return &GormLogger{
-		ctx:                       ctx,
 		Logger:                    logger,
 		SlowThreshold:             config.SlowThreshold,
 		LogLevel:                  config.LogLevel,
@@ -66,10 +64,6 @@ func (l *GormLogger) Trace(ctx context.Context, begin time.Time, fc func() (stri
 	if l.LogLevel <= gormlogger.Silent {
 		return
 	}
-	if l.ctx != nil {
-		ctx = l.ctx
-	}
-
 	// Execute the function to get SQL and rows now, before going into the goroutine
 	// This ensures the SQL query is captured correctly from the current context
 	sql, rows := fc()

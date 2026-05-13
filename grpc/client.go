@@ -56,13 +56,13 @@ func clientInterceptor(ctx context.Context, method string, request interface{}, 
 
 	md, _ := metadata.FromOutgoingContext(ctx)
 
-	appCtx.Log().LogRequestGrpc(appCtx.ToContext(), method, "GRPC", &request, md)
+	appCtx.Log().LogRequestGrpc(method, "GRPC", &request, md)
 	err := invoker(ctx, method, request, response, cc, opts...)
 
 	if err != nil {
-		appCtx.Log().LogResponseGrpc(appCtx.ToContext(), timeStart, method, "GRPC", err.Error())
+		appCtx.Log().LogResponseGrpc(timeStart, method, "GRPC", err.Error())
 		return err
 	}
-	appCtx.Log().LogResponseGrpc(appCtx.ToContext(), timeStart, method, "GRPC", &response)
+	appCtx.Log().LogResponseGrpc(timeStart, method, "GRPC", &response)
 	return err
 }

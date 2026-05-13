@@ -1,4 +1,4 @@
-package http
+package httpclient
 
 import (
 	"errors"
@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	Error "github.com/ewinjuman/go-lib/v2/error"
+	Error "github.com/ewinjuman/go-lib/v2/apperror"
 )
 
 var (

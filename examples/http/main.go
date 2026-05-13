@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
+
 	"github.com/ewinjuman/go-lib/v2/appContext"
 	"github.com/ewinjuman/go-lib/v2/examples/helper"
-	"github.com/ewinjuman/go-lib/v2/http"
+	"github.com/ewinjuman/go-lib/v2/httpclient"
 	"github.com/ewinjuman/go-lib/v2/logger"
 )
 
@@ -21,16 +23,16 @@ type ResponseData struct {
 }
 
 func main() {
-	appCtx := appContext.New(helper.GetLogger())
+	appCtx := appContext.New(context.Background(), helper.GetLogger())
 	response := &ResponseData{}
 	//var i int
-	err := http.Get("http://localhost:3000/template").WithRequestID("setRequestID").
+	err := httpclient.Get("http://localhost:3000/template").WithRequestID("setRequestID").
 		WithBasicAuth("ewin", "password").
 		WithQueryParam(map[string]string{"msisdn": "08123456", "deviceId": "8jdj8j3mmkldk"}).
 		Execute().Consume(response)
 	if err != nil {
-		appCtx.Log().Error(appCtx.ToContext(), err.Error())
+		appCtx.Log().Error(err.Error())
 	}
-	appCtx.Log().Info(appCtx.ToContext(), "", logger.Interface("result", response.Total))
+	appCtx.Log().Info("", logger.Interface("result", response.Total))
 
 }

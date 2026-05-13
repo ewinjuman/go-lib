@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"github.com/ewinjuman/go-lib/v2/appContext"
-	"github.com/ewinjuman/go-lib/v2/logger"
 	"sync"
 	"time"
+
+	"github.com/ewinjuman/go-lib/v2/appContext"
+	"github.com/ewinjuman/go-lib/v2/logger"
 )
 
 var (
@@ -74,14 +76,14 @@ func main() {
 
 	start := time.Now()
 	log := GetLogger()
-	appCtx := appContext.New(log)
+	appCtx := appContext.New(context.Background(), log)
 	defer log.Shutdown()
 
 	//appCtx.SetRequestID("requestID") // set if needed
-	appCtx.LogInfo("Start", logger.String("user", "kamu"), logger.String("token", "udhs908711"))
-	appCtx.LogInfo("print struct", logger.Interface("user", user))
-	appCtx.Log().Info(appCtx.ToContext(), "masking", logger.String("token", "12345789"), logger.String("Email", "user@example.com"))
-	appCtx.Log().Info(appCtx.ToContext(), "redaction", logger.String("pin", "123456"), logger.String("Email", "user@example.com"))
+	appCtx.Log().Info("Start", logger.String("user", "kamu"), logger.String("token", "udhs908711"))
+	appCtx.Log().Info("print struct", logger.Interface("user", user))
+	appCtx.Log().Info("masking", logger.String("token", "12345789"), logger.String("Email", "user@example.com"))
+	appCtx.Log().Info("redaction", logger.String("pin", "123456"), logger.String("Email", "user@example.com"))
 	stop := time.Now()
 	println(fmt.Sprintf("%d ms", stop.Sub(start).Milliseconds()))
 }

@@ -1,4 +1,4 @@
-package http
+package httpclient
 
 import (
 	"github.com/ewinjuman/go-lib/v2/logger"

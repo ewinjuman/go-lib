@@ -1,4 +1,4 @@
-package http
+package httpclient
 
 import (
 	"encoding/json"
@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	Error "github.com/ewinjuman/go-lib/v2/error"
+	Error "github.com/ewinjuman/go-lib/v2/apperror"
 	"github.com/ewinjuman/go-lib/v2/utils/convert"
 	"github.com/go-resty/resty/v2"
 )

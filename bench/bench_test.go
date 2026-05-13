@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	httplib "github.com/ewinjuman/go-lib/v2/http"
+	httplib "github.com/ewinjuman/go-lib/v2/httpclient"
 	"github.com/ewinjuman/go-lib/v2/httpstd"
 )
 

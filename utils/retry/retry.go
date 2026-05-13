@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"math/rand"
 	"net"
 	"strings"
@@ -46,9 +45,6 @@ func DoWithCustom(ctx context.Context, fn func() error) error {
 		default:
 			if err := fn(); err != nil {
 				lastErr = err
-				// logger error untuk debugging
-				log.Printf("Attempt %d failed: %v", i+1, err)
-
 				if i < len(backoff)-1 {
 					// Tambah jitter ke backoff
 					jitter := time.Duration(rand.Int63n(int64(backoff[i] / 2)))

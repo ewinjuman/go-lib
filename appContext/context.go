@@ -2,12 +2,13 @@ package appContext
 
 import (
 	"context"
+	"time"
+
 	"github.com/ewinjuman/go-lib/v2/constant"
 	Logger "github.com/ewinjuman/go-lib/v2/logger"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	Map "github.com/orcaman/concurrent-map"
-	"time"
 )
 
 type AppContext struct {
@@ -17,19 +18,28 @@ type AppContext struct {
 	RequestTime        time.Time
 	UserID             string
 	logger             *Logger.Logger
+	parentCtx          context.Context
 	IP, UserAgent      string
 	Port               int
 	SrcIP, URL, Method string
 	Header, Request    interface{}
 }
 
-// New membuat instance baru AppContext
-func New(log *Logger.Logger) *AppContext {
-
+// New membuat instance baru AppContext dengan parent context.
+// ctx digunakan sebagai base untuk ToContext() sehingga deadline dan cancellation tetap terbawa.
+// log boleh nil; jika nil akan menggunakan global singleton logger.
+func New(ctx context.Context, log *Logger.Logger) *AppContext {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if log == nil {
+		log = Logger.GetLogger()
+	}
 	return &AppContext{
 		RequestID:   uuid.New().String(),
 		RequestTime: time.Now(),
 		logger:      log,
+		parentCtx:   ctx,
 		cMap:        Map.New(),
 	}
 }
@@ -101,12 +111,12 @@ func FromFiber(c *fiber.Ctx) *AppContext {
 	return nil
 }
 
-func (ac *AppContext) Log() *Logger.Logger {
-	return ac.logger
+func (ac *AppContext) Log() *Logger.ContextualLogger {
+	return Logger.NewContextualLogger(ac.logger, ac.ToContext())
 }
 
 func (ac *AppContext) ToContext() context.Context {
-	ctx := context.Background()
+	ctx := ac.parentCtx
 	ctx = setContextIfNotEmpty(ctx, constant.RequestIDKey, ac.RequestID)
 	ctx = setContextIfNotEmpty(ctx, constant.TraceIDKey, ac.TraceID)
 	ctx = setContextIfNotEmpty(ctx, constant.UserIDKey, ac.UserID)
@@ -134,7 +144,6 @@ func setContextIfNotZeroTime(ctx context.Context, key interface{}, value time.Ti
 	return ctx
 }
 
-
 func (ac *AppContext) Get(key string, defaultValue ...interface{}) (data interface{}) {
 	data, ok := ac.cMap.Get(key)
 	if !ok {
@@ -153,20 +162,3 @@ func (ac *AppContext) Remove(key string) {
 	ac.cMap.Remove(key)
 }
 
-func (ac *AppContext) LogInfo(msg string, fields ...Logger.Field) {
-	ac.Log().Info(ac.ToContext(), msg, fields...)
-}
-
-func (ac *AppContext) LogError(msg string, fields ...Logger.Field) {
-	ac.Log().Error(ac.ToContext(), msg, fields...)
-}
-
-func (ac *AppContext) LogDebug(msg string, fields ...Logger.Field) {
-	ac.Log().Debug(ac.ToContext(), msg, fields...)
-}
-func (ac *AppContext) LogWarn(msg string, fields ...Logger.Field) {
-	ac.Log().Warn(ac.ToContext(), msg, fields...)
-}
-func (ac *AppContext) LogFatal(msg string, fields ...Logger.Field) {
-	ac.Log().Fatal(ac.ToContext(), msg, fields...)
-}

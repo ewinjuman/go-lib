@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	Error "github.com/ewinjuman/go-lib/v2/error"
+	Error "github.com/ewinjuman/go-lib/v2/apperror"
 	"github.com/ewinjuman/go-lib/v2/utils/convert"
 )
 

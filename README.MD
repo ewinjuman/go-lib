@@ -21,9 +21,10 @@ go get github.com/ewinjuman/go-lib/v2
 |---|---|
 | [`logger`](#logger) | Structured async logging with masking and file rotation |
 | [`appContext`](#appcontext) | Request-scoped context for distributed tracing |
-| [`http`](#http-client) | Fluent HTTP client with retry and circuit breaker |
+| [`httpclient`](#http-client) | Fluent HTTP client (resty) with circuit breaker |
+| [`httpstd`](#http-client) | Same API as `httpclient` but uses stdlib `net/http` |
 | [`grpc`](#grpc-client) | gRPC client with automatic context and metadata |
-| [`error`](#error-handling) | Standardized error types with HTTP/gRPC code mapping |
+| [`apperror`](#error-handling) | Standardized error types with HTTP/gRPC code mapping |
 | [`password`](#password) | Bcrypt password hashing and comparison |
 | [`constant`](#constant) | Context key constants for request propagation |
 | [`utils`](#utils) | General utilities: conversion, retry, code generation |
@@ -67,6 +68,8 @@ log := logger.GetLogger()
 
 ### Basic Logging
 
+All log methods take `context.Context` as first argument so trace/request IDs are automatically included:
+
 ```go
 ctx := context.Background()
 
@@ -102,20 +105,30 @@ opts := logger.Options{
 
 Masking example: `"email": "u***@***.com"`, `"token": "ab****xyz"`
 
-### HTTP Request/Response Logging
+### HTTP / gRPC Request Logging
 
 ```go
-log.LogRequest(ctx, "POST", "/api/orders", headers, requestBody)
-log.LogResponse(ctx, "POST", "/api/orders", 201, responseBody, elapsed)
+log.LogRequestHttp(ctx, url, method, body, header, params)
+log.LogResponseHttp(ctx, elapsed, statusCode, url, method, body, err)
+
+log.LogRequestGrpc(ctx, method, "GRPC", requestBody, metadata)
+log.LogResponseGrpc(ctx, startTime, method, "GRPC", responseBody)
 ```
 
 ### GORM Database Logging
 
 ```go
-import gormlogger "gorm.io/gorm/logger"
+import (
+    "github.com/ewinjuman/go-lib/v2/logger"
+    gormlogger "gorm.io/gorm/logger"
+)
 
-db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-    Logger: log.GormLogger(gormlogger.Info),
+gormDB, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+    Logger: logger.NewGormLogger(log, gormlogger.Config{
+        SlowThreshold:             time.Second,
+        LogLevel:                  gormlogger.Info,
+        IgnoreRecordNotFoundError: false,
+    }),
 })
 ```
 
@@ -123,24 +136,24 @@ db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `AppName` | string | `""` | Service identifier added to every log |
-| `Environment` | string | `""` | Environment tag (dev/staging/prod) |
-| `Stdout` | bool | `false` | Print to console |
+| `AppName` | string | `"app"` | Service identifier added to every log |
+| `Environment` | string | `"development"` | Environment tag (dev/staging/prod) |
+| `Stdout` | bool | `true` | Print to console |
 | `Write` | bool | `false` | Write to file |
 | `Filename` | string | `""` | Log file path |
-| `MaxSize` | int | `0` | Max file size in MB before rotation |
-| `MaxBackups` | int | `0` | Number of rotated files to keep |
-| `MaxAge` | int | `0` | Max age in hours for rotated files |
-| `Compress` | bool | `false` | Compress rotated log files |
+| `MaxSize` | int | `100` | Max file size in MB before rotation |
+| `MaxBackups` | int | `7` | Number of rotated files to keep |
+| `MaxAge` | int | `24` | Max age in hours for rotated files |
+| `Compress` | bool | `true` | Compress rotated log files |
 | `Level` | Level | `InfoLevel` | Minimum log level |
 | `MaskingPaths` | []string | `nil` | Fields to partially mask |
 | `RedactionPaths` | []string | `nil` | Fields to fully redact |
 | `DefaultFields` | map[string]string | `nil` | Fields added to every log entry |
 | `EnableTrace` | bool | `false` | Attach stack traces to error logs |
 | `Development` | bool | `false` | Pretty console output |
-| `BufferSize` | int | `1000` | Async log buffer size |
-| `FlushInterval` | Duration | `5s` | Auto-flush interval |
-| `WorkerPoolSize` | int | `2` | Async worker count |
+| `BufferSize` | int | `256` | Async log buffer size |
+| `FlushInterval` | Duration | `500ms` | Auto-flush interval |
+| `WorkerPoolSize` | int | `2` | Number of concurrent async log workers |
 | `DisableAsync` | bool | `false` | Disable async buffering (synchronous mode) |
 | `DisableMasking` | bool | `false` | Disable masking globally |
 
@@ -152,19 +165,26 @@ Request-scoped context for propagating request metadata (trace IDs, user IDs, IP
 
 ### Creating a Context
 
+`New` takes a parent `context.Context` as first argument so deadlines and cancellations from the HTTP request are preserved. The logger is optional — if `nil`, the global singleton is used.
+
 ```go
 import (
+    "context"
     "github.com/ewinjuman/go-lib/v2/appContext"
     "github.com/ewinjuman/go-lib/v2/logger"
 )
 
 log := logger.GetLogger()
 
-appCtx := appContext.New(log).
+// With explicit parent context (recommended in handlers)
+appCtx := appContext.New(ctx, log).
     SetTraceID("trace-abc-123").
     SetUserID("user-456").
     SetIP("192.168.1.1").
     SetMethod("POST")
+
+// With nil logger — falls back to global singleton
+appCtx = appContext.New(ctx, nil)
 ```
 
 ### From Fiber Request
@@ -172,18 +192,38 @@ appCtx := appContext.New(log).
 ```go
 func handler(c *fiber.Ctx) error {
     appCtx := appContext.FromFiber(c)
-    appCtx.LogInfo("handling request")
+    appCtx.Log().Info("handling request")
     return nil
+}
+```
+
+In middleware, create the AppContext with the Fiber request context so deadlines propagate:
+
+```go
+func contextMiddleware(c *fiber.Ctx) error {
+    appCtx := appContext.New(c.UserContext(), log).
+        SetRequestID(c.Get("X-Request-ID")).
+        SetIP(c.IP())
+    c.Locals(constant.AppContextKey, appCtx)
+    return c.Next()
 }
 ```
 
 ### Logging via AppContext
 
+`Log()` returns a `*ContextualLogger` already bound to the request context — no need to pass `ToContext()` manually:
+
 ```go
-appCtx.LogInfo("order placed", logger.String("order_id", "o-789"))
-appCtx.LogError("failed to charge card", logger.Error(err))
-appCtx.LogWarn("retry attempt", logger.Int("attempt", 2))
-appCtx.LogDebug("cache lookup", logger.String("key", "user:123"))
+appCtx.Log().Info("order placed", logger.String("order_id", "o-789"))
+appCtx.Log().Error("failed to charge card", logger.Error(err))
+appCtx.Log().Warn("retry attempt", logger.Int("attempt", 2))
+appCtx.Log().Debug("cache lookup", logger.String("key", "user:123"))
+
+// HTTP / gRPC request logging
+appCtx.Log().LogRequestHttp(url, method, body, headers, params)
+appCtx.Log().LogResponseHttp(elapsed, statusCode, url, method, body, err)
+appCtx.Log().LogRequestGrpc(method, "GRPC", requestBody, metadata)
+appCtx.Log().LogResponseGrpc(startTime, method, "GRPC", responseBody)
 ```
 
 ### Custom Key-Value Storage
@@ -191,7 +231,6 @@ appCtx.LogDebug("cache lookup", logger.String("key", "user:123"))
 ```go
 appCtx.Put("tenant_id", "tenant-001")
 tenantID := appCtx.Get("tenant_id", "default")
-
 appCtx.Remove("tenant_id")
 ```
 
@@ -199,45 +238,46 @@ appCtx.Remove("tenant_id")
 
 ```go
 ctx := appCtx.ToContext()
-
-// All fields (trace_id, request_id, user_id, etc.) are accessible
-// via the standard context key constants
+// All fields (trace_id, request_id, user_id, etc.) are now in ctx
 ```
 
 ---
 
 ## HTTP Client
 
-Fluent HTTP client with automatic logging, retry, circuit breaker, and multipart support.
+Fluent HTTP client with automatic logging and circuit breaker. Two implementations share an identical API:
+
+- `github.com/ewinjuman/go-lib/v2/httpclient` — backed by [resty](https://github.com/go-resty/resty)
+- `github.com/ewinjuman/go-lib/v2/httpstd` — backed by stdlib `net/http` (generally faster under high concurrency)
 
 ### Basic Usage
 
 ```go
-import "github.com/ewinjuman/go-lib/v2/http"
+import "github.com/ewinjuman/go-lib/v2/httpclient"
 
 // GET
 var result MyResponse
-err := http.Get("https://api.example.com", "/users").
+err := httpclient.Get("https://api.example.com/users").
     WithQueryParam(map[string]string{"page": "1", "limit": "20"}).
     Execute().
     Consume(&result)
 
 // POST with JSON body
-err := http.Post("https://api.example.com", "/users").
+err = httpclient.Post("https://api.example.com/users").
     WithBody(CreateUserRequest{Name: "Alice", Email: "alice@example.com"}).
     WithHeaders(map[string]string{"X-API-Key": "my-api-key"}).
     Execute().
     Consume(&result)
 
-// PUT
-err := http.Put("https://api.example.com", "/users/{id}").
+// PUT with path parameter
+err = httpclient.Put("https://api.example.com/users/:id").
     WithPathParam(map[string]string{"id": "u-123"}).
     WithBody(updatePayload).
     Execute().
     Consume(&result)
 
 // DELETE
-err := http.Delete("https://api.example.com", "/users/{id}").
+err = httpclient.Delete("https://api.example.com/users/:id").
     WithPathParam(map[string]string{"id": "u-123"}).
     Execute().
     Consume(&result)
@@ -246,77 +286,99 @@ err := http.Delete("https://api.example.com", "/users/{id}").
 ### Authentication
 
 ```go
-// Basic auth
-http.Get("https://api.example.com", "/protected").
+httpclient.Get("https://api.example.com/protected").
     WithBasicAuth("username", "password").
     Execute()
 
-// Bearer token
-http.Get("https://api.example.com", "/protected").
+httpclient.Get("https://api.example.com/protected").
     WithBearer("my-token").
     Execute()
 ```
 
-### With Request Context & Timeout
+### Request Configuration
 
 ```go
-http.Post("https://api.example.com", "/orders").
+httpclient.Post("https://api.example.com/orders").
     WithContext(appCtx.ToContext()).
     WithTimeout(30 * time.Second).
-    SetRequestID("req-xyz").
-    SetDebug(true).
+    WithRequestID("req-xyz").
+    WithDebug(true).
+    WithSkipTLS().
     WithBody(orderPayload).
     Execute().
     Consume(&result)
 ```
 
-### Multipart File Upload
+### Custom Success Codes
+
+By default, only HTTP 200 is treated as success. Override per request:
 
 ```go
-http.Post("https://api.example.com", "/upload").
-    WithFile([]http.MultipartData{
-        {Field: "file", Name: "photo.jpg", Path: "/tmp/photo.jpg"},
-    }).
-    Execute()
-```
-
-### Using Full URL
-
-```go
-http.GetWithURL("https://api.example.com/v1/users?active=true").Execute()
-http.PostWithURL("https://api.example.com/v1/users").WithBody(payload).Execute()
-```
-
-### Retry
-
-```go
-err := http.Post("https://api.example.com", "/notify").
+httpclient.Post("https://api.example.com/resources").
     WithBody(payload).
-    ExecuteWithRetry().
+    WithSuccessCodes([]int{200, 201, 202}).
+    Execute().
     Consume(&result)
 ```
+
+`Consume`, `IsSuccess`, and `IsError` all respect the configured codes.
 
 ### Checking Response
 
 ```go
-resp := http.Get("https://api.example.com", "/status").Execute()
+resp := httpclient.Get("https://api.example.com/status").Execute()
 
 if resp.IsSuccess() {
     fmt.Println("HTTP", resp.HttpCode())
     resp.Consume(&myStruct)
 }
 
-ok, err := resp.IsError()
-if ok {
-    // handle error
+if ok, err := resp.IsError(); ok {
+    // err contains status code and body details
 }
+```
+
+### Circuit Breaker
+
+Circuit breaker is **on by default** per host (`scheme://host`). It opens after 5 failures or a 50% failure rate, and probes again after 1 minute.
+
+```go
+// Tune thresholds (applied on first request to the host)
+httpclient.Post("https://api.payment.com/charge").
+    WithBody(payload).
+    WithCircuitBreakerConfig(httpclient.CircuitBreakerConfig{
+        FailureThreshold:     3,
+        RecoveryTimeout:      30 * time.Second,
+        FailureRateThreshold: 0.3,
+    }).
+    Execute()
+
+// Disable for a specific request
+httpclient.Get("http://internal-svc/ping").
+    WithoutCircuitBreaker().
+    Execute()
+```
+
+HTTP 5xx responses count as failures; 4xx does not trip the breaker.
+
+### Multipart File Upload
+
+```go
+file, _ := os.Open("/tmp/photo.jpg")
+defer file.Close()
+
+httpclient.Post("https://api.example.com/upload").
+    WithFile([]httpclient.MultipartData{
+        {Key: "file", Value: "photo.jpg", File: file},
+    }).
+    Execute()
 ```
 
 ---
 
 ## gRPC Client
 
-Lightweight gRPC client wrapper with context propagation and automatic logging.
+Lightweight gRPC client wrapper with context propagation and automatic request/response logging.
 
 ### Creating a Connection
 
@@ -325,7 +387,7 @@ import "github.com/ewinjuman/go-lib/v2/grpc"
 
 conn, err := grpc.New(grpc.Options{
     Address: "user-service:5000",
-    Timeout: 30 * time.Second,
+    Timeout: 30,
 })
 if err != nil {
     log.Fatal(err)
@@ -335,11 +397,10 @@ if err != nil {
 ### Creating a Context for RPC Calls
 
 ```go
-// CreateContext adds timeout and trace/request IDs to outgoing metadata
+// CreateContext adds timeout and propagates request ID to outgoing metadata
 ctx, cancel := conn.CreateContext(context.Background(), appCtx)
 defer cancel()
 
-// Use ctx with generated gRPC stubs
 resp, err := userClient.GetUser(ctx, &pb.GetUserRequest{Id: "u-123"})
 ```
 
@@ -352,36 +413,25 @@ Standardized error types that map cleanly between HTTP status codes and gRPC cod
 ### Creating Errors
 
 ```go
-import liberror "github.com/ewinjuman/go-lib/v2/error"
+import "github.com/ewinjuman/go-lib/v2/apperror"
 
-// With HTTP status code
-err := liberror.New(400, "VALIDATION_ERROR", "invalid email format")
-
-// With optional message (uses HTTP status text if message is omitted)
-err := liberror.NewError(404, "NOT_FOUND")
-err := liberror.NewError(422, "UNPROCESSABLE", "email already exists")
-
-// Timeout error
-err := liberror.DeadlineExceededError("upstream API timed out")
+err := apperror.New(400, "VALIDATION_ERROR", "invalid email format")
+err  = apperror.NewError(404, "NOT_FOUND")
+err  = apperror.NewError(422, "UNPROCESSABLE", "email already exists")
+err  = apperror.DeadlineExceededError("upstream API timed out")
 ```
 
 ### Inspecting Errors
 
 ```go
-// Get HTTP status code from error (defaults to 500)
-code := liberror.GetCode(err)
+code := apperror.GetCode(err)      // HTTP status code, defaults to 500
 
-// Check if timeout
-if liberror.IsTimeout(err) {
-    // implement retry or fallback
-}
+if apperror.IsTimeout(err) { ... } // handles os timeout + gRPC DeadlineExceeded
 
-// Parse to ApplicationError (works on both gRPC and HTTP errors)
-appErr := liberror.ParseError(err)
+appErr := apperror.ParseError(err) // works on gRPC, ApplicationError, and plain errors
 fmt.Println(appErr.ErrorCode, appErr.Status, appErr.Message)
 
-// Get human-readable status text
-text := liberror.StatusMessage(422) // "Unprocessable Entity"
+text := apperror.StatusMessage(422) // "Unprocessable Entity"
 ```
 
 ### ApplicationError Fields
@@ -403,14 +453,8 @@ Bcrypt-based password hashing utilities.
 ```go
 import "github.com/ewinjuman/go-lib/v2/password"
 
-// Hash a password before storing
 hash, err := password.GeneratePassword("user_secret_password")
-if err != nil {
-    // handle error
-}
-// store `hash` in database
 
-// Verify at login
 ok := password.ComparePasswords(storedHash, inputPassword)
 if !ok {
     // return unauthorized
@@ -426,8 +470,7 @@ Context key constants for consistent key-value access across the request lifecyc
 ```go
 import "github.com/ewinjuman/go-lib/v2/constant"
 
-// Available keys:
-constant.AppContextKey
+constant.AppContextKey     // AppContext stored in fiber.Locals
 constant.RequestIDKey
 constant.TraceIDKey
 constant.UserIDKey
@@ -452,48 +495,40 @@ requestID := ctx.Value(constant.RequestIDKey)
 ```go
 import "github.com/ewinjuman/go-lib/v2/utils/retry"
 
-// Retry up to 3 times with incremental backoff
+// 3 attempts, incremental backoff (100ms → 200ms → 300ms)
 err := retry.Do(ctx, func() error {
     return callExternalAPI()
 })
 
-// Retry with custom config
-err := retry.DoWithCustom(ctx, myFunc, retry.Config{
-    MaxAttempts: 5,
-    Delay:       200 * time.Millisecond,
+// 3 attempts, jitter backoff (100ms → 200ms → 500ms)
+err = retry.DoWithCustom(ctx, func() error {
+    return callExternalAPI()
 })
 
-// Retry with typed response
+// Typed response variant
 result, err := retry.DoWithResponse(ctx, func() (*MyResult, error) {
     return fetchData()
 })
-```
 
-`ShouldRetry` automatically handles network errors, timeouts, and HTTP 429/502/503.
+if retry.ShouldRetry(err) { ... }
+```
 
 ### Convert
 
 ```go
 import "github.com/ewinjuman/go-lib/v2/utils/convert"
 
-// Struct-to-struct via JSON
 var dst TargetType
-err := convert.ObjectToObject(src, &dst)
+convert.ObjectToObject(src, &dst)
 
-// Struct to JSON string
-jsonStr, err := convert.ObjectToString(myStruct)
+jsonStr := convert.ObjectToString(myStruct)
+convert.StringToObject(jsonStr, &myStruct)
+convert.ByteToObject(jsonBytes, &myStruct)
 
-// JSON string to struct
-err := convert.StringToObject(jsonStr, &myStruct)
-
-// Number to words (Indonesian)
-words := convert.ConvertToWord(1500) // "seribu lima ratus"
-
-// Number to words (English)
-words := convert.ConvertEng(1500)    // "one thousand five hundred"
-
-// Date to Indonesian formatted string
-str := convert.ConvertDateID(time.Now()) // "30 April 2026"
+convert.ConvertToWord(1500)              // "seribu lima ratus"
+convert.ConvertEng(1500)                 // "one thousand five hundred"
+convert.ConvertEngAnd(1500)              // "one thousand and five hundred"
+convert.ConvertDateID(time.Now(), "2 January 2006") // "13 Mei 2026"
 ```
 
 ### Code Generator
@@ -501,38 +536,26 @@ str := convert.ConvertDateID(time.Now()) // "30 April 2026"
 ```go
 import "github.com/ewinjuman/go-lib/v2/utils/codeGenerator"
 
-// Cryptographically secure random string
-code := codeGenerator.RandomString(16, codeGenerator.AlphanumericCharset)
-otp  := codeGenerator.RandomString(6, codeGenerator.NumbersCharset)
-slug := codeGenerator.RandomString(8, codeGenerator.LowerCaseLettersCharset)
+codeGenerator.RandomString(16, codeGenerator.AlphanumericCharset)
+codeGenerator.RandomString(6,  codeGenerator.NumbersCharset)
+codeGenerator.RandomString(8,  codeGenerator.LowerCaseLettersCharset)
 ```
 
-Available charsets: `LowerCaseLettersCharset`, `UpperCaseLettersCharset`, `NumbersCharset`, `AlphanumericCharset`, `SpecialCharset`, `AllCharset`.
+Available charsets: `LowerCaseLettersCharset`, `UpperCaseLettersCharset`, `NumbersCharset`, `AlphanumericCharset`, `SpecialCharset`, `AllCharset`, `AlphanumericLowerCaseCharset`, `AlphanumericUpperCaseCharset`.
 
 ### General Utilities
 
 ```go
 import "github.com/ewinjuman/go-lib/v2/utils"
 
-// Check if value exists in slice
-found := utils.ContainsInArr([]string{"a", "b", "c"}, "b") // true
-
-// Case-insensitive check
-found := utils.ContainsInArrNoCaseSensitive(slice, "Admin")
-
-// String parsing
-mid  := utils.BetweenString("hello world foo", "hello ", " foo") // "world"
-pre  := utils.BeforeString("user@example.com", "@")              // "user"
-post := utils.AfterString("user@example.com", "@")               // "example.com"
-
-// Coalesce: returns first non-empty value
-val := utils.Or("", "", "fallback") // "fallback"
-
-// Panic on error (for init-time operations)
-cfg := utils.Must(loadConfig())
-
-// Safe pointer dereference
-val := utils.SafeDeref(maybeNilPtr) // returns zero value if nil
+utils.ContainsInArr([]string{"a", "b"}, "b")
+utils.ContainsInArrNoCaseSensitive(slice, "Admin")
+utils.BetweenString("hello world foo", "hello ", " foo") // "world"
+utils.BeforeString("user@example.com", "@")              // "user"
+utils.AfterString("user@example.com", "@")               // "example.com"
+utils.Or("", "fallback")                                 // "fallback"
+utils.Must(loadConfig())                                 // panics on error
+utils.SafeDeref(maybeNilPtr)                             // zero value if nil
 ```
 
 ---
@@ -545,9 +568,9 @@ package main
 import (
     "context"
 
-    appctx  "github.com/ewinjuman/go-lib/v2/appContext"
-    liberr  "github.com/ewinjuman/go-lib/v2/error"
-    libhttp "github.com/ewinjuman/go-lib/v2/http"
+    appctx "github.com/ewinjuman/go-lib/v2/appContext"
+    "github.com/ewinjuman/go-lib/v2/apperror"
+    "github.com/ewinjuman/go-lib/v2/httpclient"
     "github.com/ewinjuman/go-lib/v2/logger"
     "github.com/ewinjuman/go-lib/v2/password"
 )
@@ -567,17 +590,17 @@ func main() {
     log := logger.GetLogger()
     defer log.Shutdown()
 
-    // 2. Create request context
-    appCtx := appctx.New(log).
+    // 2. Create request context — parent ctx carries deadline/cancellation
+    appCtx := appctx.New(context.Background(), log).
         SetTraceID("trace-abc").
         SetUserID("user-123")
 
-    appCtx.LogInfo("starting request")
+    appCtx.Log().Info("starting request")
 
     // 3. Hash password
     hash, _ := password.GeneratePassword("secret")
     if !password.ComparePasswords(hash, "secret") {
-        appCtx.LogError("password mismatch")
+        appCtx.Log().Error("password mismatch")
         return
     }
 
@@ -588,7 +611,7 @@ func main() {
     }
 
     var apiResp APIResponse
-    err := libhttp.Get("https://api.example.com", "/users/{id}").
+    err := httpclient.Get("https://api.example.com/users/:id").
         WithContext(appCtx.ToContext()).
         WithPathParam(map[string]string{"id": "u-123"}).
         WithBearer("my-token").
@@ -596,17 +619,15 @@ func main() {
         Consume(&apiResp)
 
     if err != nil {
-        appErr := liberr.ParseError(err)
-        appCtx.LogError("API call failed",
+        appErr := apperror.ParseError(err)
+        appCtx.Log().Error("API call failed",
             logger.Int("code", appErr.ErrorCode),
             logger.String("status", appErr.Status))
         return
     }
 
-    appCtx.LogInfo("API call success",
+    appCtx.Log().Info("API call success",
         logger.String("user_name", apiResp.Name))
-
-    _ = context.Background()
 }
 ```
 

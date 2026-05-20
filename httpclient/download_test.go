@@ -1,7 +1,10 @@
 package httpclient
 
 import (
+	"bytes"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -65,5 +68,40 @@ func TestResponse_SaveToFile(t *testing.T) {
 		// Writing into a non-existent subdirectory causes os.WriteFile to fail.
 		err := resp.SaveToFile(filepath.Join(t.TempDir(), "missing_dir", "out.txt"))
 		assert.Error(t, err)
+	})
+}
+
+func TestRequestBuilder_WithOutput(t *testing.T) {
+	content := []byte("streaming download content")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write(content)
+	}))
+	defer srv.Close()
+
+	t.Run("streams response body to writer", func(t *testing.T) {
+		var buf bytes.Buffer
+		resp := Get(srv.URL).WithOutput(&buf).Execute()
+		assert.NoError(t, resp.Error)
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Equal(t, content, buf.Bytes())
+	})
+
+	t.Run("Body is nil after streaming", func(t *testing.T) {
+		var buf bytes.Buffer
+		resp := Get(srv.URL).WithOutput(&buf).Execute()
+		assert.Nil(t, resp.Body)
+	})
+
+	t.Run("IsSuccess returns true after streaming", func(t *testing.T) {
+		var buf bytes.Buffer
+		resp := Get(srv.URL).WithOutput(&buf).Execute()
+		assert.True(t, resp.IsSuccess())
+	})
+
+	t.Run("WithOutput nil is a no-op", func(t *testing.T) {
+		resp := Get(srv.URL).WithOutput(nil).Execute()
+		assert.NotNil(t, resp.Body)
+		assert.Equal(t, content, resp.Body)
 	})
 }

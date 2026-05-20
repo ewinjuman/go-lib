@@ -1,9 +1,11 @@
 package httpclient
 
 import (
+	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 	"time"
@@ -138,9 +140,17 @@ func (r *Request) handleError(response *Response, resultRequest *resty.Response,
 
 // processResponse unmarshal and processes the response body on success
 func (r *Request) processResponse(response *Response, resultRequest *resty.Response, url string, responseTime time.Duration) {
-	response.Body = resultRequest.Body()
+	if r.Output == nil {
+		response.Body = resultRequest.Body()
+	} else {
+		io.Copy(r.Output, bytes.NewReader(resultRequest.Body()))
+	}
 	response.StatusCode = resultRequest.StatusCode()
 	if !r.DebugMode {
+		return
+	}
+	if r.Output != nil {
+		r.Writer.Print(r.Context, "http_response", r.Method.String(), url, response.StatusCode, "[streamed]", resultRequest.Header(), responseTime, nil)
 		return
 	}
 	var result interface{}
@@ -159,5 +169,4 @@ func (r *Request) processResponse(response *Response, resultRequest *resty.Respo
 			r.Writer.Print(r.Context, "http_response", r.Method.String(), url, response.StatusCode, result, resultRequest.Header(), responseTime, nil)
 		}
 	}
-
 }

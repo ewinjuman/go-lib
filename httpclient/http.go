@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"io"
 	"net/http"
 	"time"
 
@@ -52,6 +53,7 @@ type (
 		DisableCircuitBreaker bool
 		HTTPSuccessCode       []int
 		CircuitBreakerConfig  *CircuitBreakerConfig
+		Output                io.Writer
 	}
 
 	RequestBuilder struct {
@@ -164,6 +166,11 @@ func (rb *RequestBuilder) WithoutCircuitBreaker() *RequestBuilder {
 // reuse the existing circuit breaker and its accumulated state.
 func (rb *RequestBuilder) WithCircuitBreakerConfig(cfg CircuitBreakerConfig) *RequestBuilder {
 	rb.request.CircuitBreakerConfig = &cfg
+	return rb
+}
+
+func (rb *RequestBuilder) WithOutput(w io.Writer) *RequestBuilder {
+	rb.request.Output = w
 	return rb
 }
 

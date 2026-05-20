@@ -48,10 +48,22 @@ func TestResponse_SaveToFile(t *testing.T) {
 	})
 
 	t.Run("returns r.Error when request failed", func(t *testing.T) {
+		sentinelErr := errors.New("connection refused")
 		resp := &Response{
-			Error: errors.New("connection refused"),
+			Error: sentinelErr,
 		}
 		err := resp.SaveToFile(filepath.Join(t.TempDir(), "out.txt"))
-		assert.EqualError(t, err, "connection refused")
+		assert.ErrorIs(t, err, sentinelErr)
+	})
+
+	t.Run("propagates WriteFile error for invalid path", func(t *testing.T) {
+		resp := &Response{
+			StatusCode:   200,
+			Body:         []byte("data"),
+			SuccessCodes: []int{200},
+		}
+		// Writing into a non-existent subdirectory causes os.WriteFile to fail.
+		err := resp.SaveToFile(filepath.Join(t.TempDir(), "missing_dir", "out.txt"))
+		assert.Error(t, err)
 	})
 }

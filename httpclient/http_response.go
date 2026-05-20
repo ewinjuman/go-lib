@@ -72,8 +72,9 @@ func (r *Response) HttpCode() int {
 	return r.StatusCode
 }
 
-// SaveToFile writes Response.Body to the file at path.
+// SaveToFile writes Response.Body to the file at path with permission 0644.
 // Returns ErrEmptyResponseBody if Body is nil (e.g. after streaming via WithOutput).
+// path is used as-is; callers should apply filepath.Clean and a prefix check before passing untrusted input.
 func (r *Response) SaveToFile(path string) error {
 	if r.Error != nil {
 		return r.Error

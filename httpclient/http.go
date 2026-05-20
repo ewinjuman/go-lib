@@ -169,6 +169,8 @@ func (rb *RequestBuilder) WithCircuitBreakerConfig(cfg CircuitBreakerConfig) *Re
 	return rb
 }
 
+// WithOutput streams the response body directly to w instead of buffering it in Response.Body.
+// After Execute(), Response.Body will be nil — do not call Consume() or SaveToFile() on the result.
 func (rb *RequestBuilder) WithOutput(w io.Writer) *RequestBuilder {
 	rb.request.Output = w
 	return rb

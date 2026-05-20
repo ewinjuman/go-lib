@@ -146,11 +146,12 @@ func (r *Request) processResponse(response *Response, resultRequest *resty.Respo
 		raw := resultRequest.RawResponse
 		response.StatusCode = raw.StatusCode
 		defer raw.Body.Close()
-		if _, err := io.Copy(r.Output, raw.Body); err != nil {
-			response.Error = err
+		var copyErr error
+		if _, copyErr = io.Copy(r.Output, raw.Body); copyErr != nil {
+			response.Error = copyErr
 		}
 		if r.DebugMode {
-			r.Writer.Print(r.Context, "http_response", r.Method.String(), url, response.StatusCode, "[streamed]", raw.Header, responseTime, nil)
+			r.Writer.Print(r.Context, "http_response", r.Method.String(), url, response.StatusCode, "[streamed]", raw.Header, responseTime, copyErr)
 		}
 		return
 	}

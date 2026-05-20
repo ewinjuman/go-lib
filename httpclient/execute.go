@@ -68,6 +68,9 @@ func (r *Request) doRequest(client *reqClient) (response *Response) {
 	}
 
 	r.processResponse(response, resultRequest, url, responseTime)
+	if response.Error != nil && cb != nil {
+		cb.RecordFailure()
+	}
 	return response
 }
 

@@ -35,7 +35,7 @@ go test -run=^$ -bench=. -benchmem -benchtime=3s ./bench/...
 | `logger` | Structured async logger (zap-backed) with masking, redaction, file rotation, GORM integration |
 | `appContext` | Request-scoped context carrier — propagates trace ID, user ID, IP, method across service layers |
 | `httpclient` | Fluent HTTP client using [resty](https://github.com/go-resty/resty) |
-| `httpstd` | Clone of `httpclient` using stdlib `net/http` — created for performance benchmarking |
+| `httpstd` | Clone of `httpclient` using stdlib `net/http` — identical public API, generally faster under high concurrency |
 | `apperror` | `ApplicationError` type bridging HTTP status codes and gRPC codes |
 | `grpc` | gRPC client wrapper with context/metadata propagation |
 | `constant` | Context key constants shared across packages |
@@ -70,7 +70,9 @@ httpclient.Post("https://api.example.com/users").
     Consume(&result)
 ```
 
-**Builder flow:** `Post(url)` → `*RequestBuilder` → chain `With*` → `Execute()` → `*Response` → `Consume(&v)` / `IsSuccess()` / `IsError()`.
+**Builder flow:** `Post(url)` → `*RequestBuilder` → chain `With*` → `Execute()` → `*Response` → `Consume(&v)` / `IsSuccess()` / `IsError()` / `SaveToFile(path)`.
+
+**File download:** `SaveToFile(path)` writes the buffered `Response.Body` to disk (small files). `WithOutput(w io.Writer)` streams directly to any writer without buffering — `Response.Body` is `nil` after streaming; never call `Consume` or `SaveToFile` on the same response. `httpclient` uses `SetDoNotParseResponse(true)` + `RawResponse.Body` for true streaming; `httpstd` uses `io.Copy` directly from `resp.Body`.
 
 **Circuit breaker** is on by default, global per-host (keyed by `scheme://host` in a `sync.Map`). Config is applied only on first request to a host — subsequent requests reuse the same CB. Use `.WithoutCircuitBreaker()` or `.WithCircuitBreakerConfig(cfg)` as needed.
 
@@ -95,3 +97,4 @@ Async by default — buffered channel + `WorkerPoolSize` goroutines (default 2).
 - **`AppContext.New()` takes `ctx` first** — always pass the request context (e.g. `c.UserContext()` in Fiber) so deadlines propagate into `ToContext()`.
 - **`Log()` returns `*ContextualLogger`**, not `*Logger` — do not bypass it by calling `ac.Log().Underlying().Info(ctx, ...)` unless raw zap access is truly needed.
 - **README.MD is the source of truth for public API examples** — keep it in sync after any API change.
+- **`WithOutput` and `Consume`/`SaveToFile` are mutually exclusive** — after `WithOutput`, `Response.Body` is nil; calling `Consume` or `SaveToFile` returns `ErrEmptyResponseBody`.

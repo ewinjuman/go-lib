@@ -374,6 +374,38 @@ httpclient.Post("https://api.example.com/upload").
     Execute()
 ```
 
+### File Download
+
+**Small files** — buffer in memory, then save to disk:
+
+```go
+err := httpclient.Get("https://api.example.com/reports/123.pdf").
+    WithBearer("my-token").
+    Execute().
+    SaveToFile("report.pdf")
+```
+
+**Large files** — stream directly to disk without buffering:
+
+```go
+f, err := os.Create("video.mp4")
+if err != nil {
+    return err
+}
+defer f.Close()
+
+resp := httpclient.Get("https://cdn.example.com/video.mp4").
+    WithOutput(f).
+    WithTimeout(5 * time.Minute).
+    Execute()
+
+if _, err := resp.IsError(); err != nil {
+    return err
+}
+```
+
+`WithOutput` streams the response body directly to any `io.Writer` (file, buffer, pipe, etc.). `Response.Body` will be `nil` after streaming — do not call `Consume` or `SaveToFile` on the same response.
+
 ---
 
 ## gRPC Client

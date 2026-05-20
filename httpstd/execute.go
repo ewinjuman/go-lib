@@ -110,7 +110,11 @@ func (r *Request) doRequest(client *reqClient) *Response {
 
 	if r.Output != nil {
 		var copyErr error
-		if _, copyErr = io.Copy(r.Output, resp.Body); copyErr != nil {
+		_, copyErr = io.Copy(r.Output, resp.Body)
+		if r.DebugMode {
+			r.Writer.Print(r.Context, "http_response", r.Method.String(), rawURL, response.StatusCode, "[streamed]", resp.Header, responseTime, copyErr)
+		}
+		if copyErr != nil {
 			response.Error = copyErr
 			if cb != nil {
 				cb.RecordFailure()
@@ -123,9 +127,6 @@ func (r *Request) doRequest(client *reqClient) *Response {
 			} else {
 				cb.RecordSuccess()
 			}
-		}
-		if r.DebugMode {
-			r.Writer.Print(r.Context, "http_response", r.Method.String(), rawURL, response.StatusCode, "[streamed]", resp.Header, responseTime, copyErr)
 		}
 		return response
 	}

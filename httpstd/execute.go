@@ -106,6 +106,30 @@ func (r *Request) doRequest(client *reqClient) *Response {
 	}
 	defer resp.Body.Close()
 
+	response.StatusCode = resp.StatusCode
+
+	if r.Output != nil {
+		var copyErr error
+		if _, copyErr = io.Copy(r.Output, resp.Body); copyErr != nil {
+			response.Error = copyErr
+			if cb != nil {
+				cb.RecordFailure()
+			}
+			return response
+		}
+		if cb != nil {
+			if resp.StatusCode >= 500 {
+				cb.RecordFailure()
+			} else {
+				cb.RecordSuccess()
+			}
+		}
+		if r.DebugMode {
+			r.Writer.Print(r.Context, "http_response", r.Method.String(), rawURL, response.StatusCode, "[streamed]", resp.Header, responseTime, copyErr)
+		}
+		return response
+	}
+
 	body, errRead := io.ReadAll(resp.Body)
 	if errRead != nil {
 		response.Error = errRead
@@ -115,7 +139,6 @@ func (r *Request) doRequest(client *reqClient) *Response {
 		return response
 	}
 
-	response.StatusCode = resp.StatusCode
 	response.Body = body
 
 	if cb != nil {

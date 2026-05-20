@@ -1,7 +1,6 @@
 package httpclient
 
 import (
-	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -97,6 +96,9 @@ func (r *Request) prepareRequestBody(request *resty.Request, url string) {
 			}
 		}
 	}
+	if r.Output != nil {
+		request.SetDoNotParseResponse(true)
+	}
 	if r.DebugMode {
 		r.Writer.Print(r.Context, "http_request", r.Method.String(), url, request.Body, r.Headers, r.QueryParams)
 	}
@@ -140,17 +142,21 @@ func (r *Request) handleError(response *Response, resultRequest *resty.Response,
 
 // processResponse unmarshal and processes the response body on success
 func (r *Request) processResponse(response *Response, resultRequest *resty.Response, url string, responseTime time.Duration) {
-	if r.Output == nil {
-		response.Body = resultRequest.Body()
-	} else {
-		io.Copy(r.Output, bytes.NewReader(resultRequest.Body()))
-	}
-	response.StatusCode = resultRequest.StatusCode()
-	if !r.DebugMode {
+	if r.Output != nil {
+		raw := resultRequest.RawResponse
+		response.StatusCode = raw.StatusCode
+		defer raw.Body.Close()
+		if _, err := io.Copy(r.Output, raw.Body); err != nil {
+			response.Error = err
+		}
+		if r.DebugMode {
+			r.Writer.Print(r.Context, "http_response", r.Method.String(), url, response.StatusCode, "[streamed]", raw.Header, responseTime, nil)
+		}
 		return
 	}
-	if r.Output != nil {
-		r.Writer.Print(r.Context, "http_response", r.Method.String(), url, response.StatusCode, "[streamed]", resultRequest.Header(), responseTime, nil)
+	response.Body = resultRequest.Body()
+	response.StatusCode = resultRequest.StatusCode()
+	if !r.DebugMode {
 		return
 	}
 	var result interface{}

@@ -1,6 +1,7 @@
 package apperror
 
 import (
+	"errors"
 	"net/http"
 	"os"
 	"strings"
@@ -43,6 +44,8 @@ func (e *ApplicationError) Error() string {
 	return e.Message
 }
 
+// IsTimeout reports whether err is a timeout error.
+// Handles os-level timeouts (net.Error) and gRPC DeadlineExceeded.
 func IsTimeout(err error) bool {
 	if os.IsTimeout(err) {
 		return true
@@ -56,46 +59,57 @@ func IsTimeout(err error) bool {
 	return st.Code() == codes.DeadlineExceeded
 }
 
+// GetCode returns the HTTP status code associated with err.
+// Returns 200 for nil, the ApplicationError.ErrorCode for *ApplicationError
+// (including wrapped errors via errors.As), and 500 for all other errors.
 func GetCode(err error) int {
 	if err == nil {
 		return 200
 	}
 
-	if he, ok := err.(*ApplicationError); ok {
+	var he *ApplicationError
+	if errors.As(err, &he) {
 		return he.ErrorCode
 	}
 
 	return 500
 }
 
+// ParseError converts any error into an *ApplicationError.
+// Order of checks:
+//  1. nil → nil
+//  2. gRPC status error → mapped via rpcCodeToApplicationCode
+//  3. *ApplicationError (including wrapped) → returned as-is via errors.As
+//  4. plain error → wrapped in 500 InternalServerError
 func ParseError(err error) *ApplicationError {
 	if err == nil {
 		return nil
 	}
 
-	// Check grpc error
-	if he, ok := status.FromError(err); ok {
-		code := codeApplication(he.Code())
+	// Check gRPC status error (status.FromError returns ok=true only for gRPC errors).
+	if st, ok := status.FromError(err); ok {
+		code := codeApplication(st.Code())
 		if code == SuccessCode {
 			return nil
 		}
 		return &ApplicationError{
 			ErrorCode: code,
 			Status:    FailedStatus,
-			Message:   he.Message(),
+			Message:   st.Message(),
 		}
 	}
 
-	// Check application error
-	if he, ok := err.(*ApplicationError); ok {
+	// Check *ApplicationError — supports wrapped errors via errors.As.
+	var he *ApplicationError
+	if errors.As(err, &he) {
 		return he
 	}
 
-	// Default error
+	// Plain error fallback.
+	// Some error strings carry context as "key = value"; take the last segment.
 	m := err.Error()
-	sErr := strings.Split(err.Error(), "=")
-	if len(sErr) > 0 {
-		m = strings.TrimSpace(sErr[len(sErr)-1])
+	if parts := strings.Split(m, "="); len(parts) > 1 {
+		m = strings.TrimSpace(parts[len(parts)-1])
 	}
 	return &ApplicationError{
 		ErrorCode: http.StatusInternalServerError,
@@ -104,7 +118,8 @@ func ParseError(err error) *ApplicationError {
 	}
 }
 
-// NewError creates a new error instance with an optional message
+// NewError creates a new error with an optional message.
+// If message is omitted, StatusMessage(code) is used as the default.
 func NewError(code int, status string, message ...string) error {
 	err := &ApplicationError{
 		ErrorCode: code,
@@ -197,6 +212,7 @@ var statusMessage = []string{
 	511: "Network Authentication Required", // StatusNetworkAuthenticationRequired
 }
 
+// ErrDeadlineExceeded is a sentinel deadline-exceeded error.
 var ErrDeadlineExceeded = DeadlineExceededError()
 
 type deadlineExceededError struct {
@@ -208,30 +224,33 @@ func (e *deadlineExceededError) Error() string   { return e.err }
 func (e *deadlineExceededError) Timeout() bool   { return e.timeout }
 func (e *deadlineExceededError) Temporary() bool { return true }
 
+// DeadlineExceededError creates a timeout error that satisfies os.IsTimeout.
 func DeadlineExceededError(message ...string) error {
-	defaultMessage := "appContext deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+	msg := "context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
 	if len(message) > 0 {
-		defaultMessage = message[0]
+		msg = message[0]
 	}
 	return &deadlineExceededError{
-		err:     defaultMessage,
+		err:     msg,
 		timeout: true,
 	}
 }
 
+// rpcCodeToApplicationCode maps gRPC status codes to HTTP status codes.
+// Reference: https://cloud.google.com/apis/design/errors#generating_errors
 var rpcCodeToApplicationCode = map[codes.Code]int{
 	codes.OK:                 200,
 	codes.Canceled:           406,
 	codes.Unknown:            500,
 	codes.InvalidArgument:    400,
-	codes.DeadlineExceeded:   451,
+	codes.DeadlineExceeded:   504, // Gateway Timeout — deadline expired before upstream responded
 	codes.NotFound:           404,
 	codes.AlreadyExists:      409,
 	codes.PermissionDenied:   403,
-	codes.ResourceExhausted:  500,
-	codes.FailedPrecondition: 500,
-	codes.Aborted:            500,
-	codes.OutOfRange:         413,
+	codes.ResourceExhausted:  429, // Too Many Requests — quota or rate limit exceeded
+	codes.FailedPrecondition: 400, // Bad Request — system not in required state
+	codes.Aborted:            409, // Conflict — concurrency conflict (optimistic lock, etc.)
+	codes.OutOfRange:         400, // Bad Request — argument out of valid range
 	codes.Unimplemented:      501,
 	codes.Internal:           500,
 	codes.Unavailable:        502,
@@ -239,13 +258,11 @@ var rpcCodeToApplicationCode = map[codes.Code]int{
 	codes.Unauthenticated:    401,
 }
 
-func codeApplication(status codes.Code) int {
-	if int(status) >= len(rpcCodeToApplicationCode) {
-		return int(status)
+// codeApplication maps a gRPC code to an HTTP status code.
+// Returns int(code) for any code not present in rpcCodeToApplicationCode.
+func codeApplication(code codes.Code) int {
+	if m, ok := rpcCodeToApplicationCode[code]; ok {
+		return m
 	}
-	m := rpcCodeToApplicationCode[status]
-	if m == 0 {
-		m = int(status)
-	}
-	return m
+	return int(code)
 }

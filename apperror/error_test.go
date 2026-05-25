@@ -2,13 +2,13 @@ package apperror
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
-	"reflect"
 	"testing"
 
-	"github.com/pkg/errors"
+	pkgerrors "github.com/pkg/errors"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -21,7 +21,7 @@ func TestGetCode(t *testing.T) {
 	}{
 		{"nil error returns 200", nil, 200},
 		{"ApplicationError returns its code", NewError(451, "FAILED", "set error pending"), 451},
-		{"plain error returns 500", errors.New("set error"), 500},
+		{"plain error returns 500", pkgerrors.New("set error"), 500},
 		{"wrapped ApplicationError returns inner code", fmt.Errorf("wrap: %w", New(404, "NOT_FOUND", "not found")), 404},
 	}
 	for _, tt := range tests {
@@ -35,105 +35,122 @@ func TestGetCode(t *testing.T) {
 
 func TestParseError(t *testing.T) {
 	tests := []struct {
-		name       string
-		err        error
-		wantResult *ApplicationError
+		name     string
+		err      error
+		wantCode int
+		wantMsg  string
+		wantStat string
 	}{
 		{
 			"nil returns nil",
-			nil,
-			nil,
+			nil, 0, "", "",
 		},
 		{
 			"ApplicationError returned as-is",
 			NewError(451, "FAILED", "set error pending"),
-			&ApplicationError{ErrorCode: 451, Status: FailedStatus, Message: "set error pending"},
+			451, "set error pending", FailedStatus,
 		},
 		{
 			"plain error wrapped in 500",
-			errors.New("set error"),
-			&ApplicationError{ErrorCode: http.StatusInternalServerError, Status: FailedStatus, Message: "set error"},
+			pkgerrors.New("set error"),
+			http.StatusInternalServerError, "set error", FailedStatus,
 		},
 		{
 			"New() error",
 			New(403, "FAILED", "error v1"),
-			&ApplicationError{ErrorCode: 403, Status: FailedStatus, Message: "error v1"},
+			403, "error v1", FailedStatus,
 		},
 		{
 			"NewError without message uses StatusMessage",
 			NewError(451, "FAILED"),
-			&ApplicationError{ErrorCode: 451, Status: FailedStatus, Message: "Unavailable For Legal Reasons"},
+			451, "Unavailable For Legal Reasons", FailedStatus,
 		},
 		{
 			"NewError with unknown code uses UndefinedMessage",
 			NewError(600, "FAILED"),
-			&ApplicationError{ErrorCode: 600, Status: FailedStatus, Message: UndefinedMessage},
+			600, UndefinedMessage, FailedStatus,
 		},
 		{
 			"wrapped ApplicationError unwrapped via errors.As",
 			fmt.Errorf("service layer: %w", New(422, "VALIDATION_ERROR", "invalid email")),
-			&ApplicationError{ErrorCode: 422, Status: "VALIDATION_ERROR", Message: "invalid email"},
+			422, "invalid email", "VALIDATION_ERROR",
 		},
 		{
 			"gRPC NotFound mapped to 404",
 			status.Error(codes.NotFound, "resource not found"),
-			&ApplicationError{ErrorCode: 404, Status: FailedStatus, Message: "resource not found"},
+			404, "resource not found", FailedStatus,
 		},
 		{
 			"gRPC DeadlineExceeded mapped to 504",
 			status.Error(codes.DeadlineExceeded, "upstream timed out"),
-			&ApplicationError{ErrorCode: 504, Status: FailedStatus, Message: "upstream timed out"},
+			504, "upstream timed out", FailedStatus,
 		},
 		{
 			"gRPC ResourceExhausted mapped to 429",
 			status.Error(codes.ResourceExhausted, "rate limit hit"),
-			&ApplicationError{ErrorCode: 429, Status: FailedStatus, Message: "rate limit hit"},
+			429, "rate limit hit", FailedStatus,
 		},
 		{
 			"gRPC FailedPrecondition mapped to 400",
 			status.Error(codes.FailedPrecondition, "precondition failed"),
-			&ApplicationError{ErrorCode: 400, Status: FailedStatus, Message: "precondition failed"},
+			400, "precondition failed", FailedStatus,
 		},
 		{
 			"gRPC Aborted mapped to 409",
 			status.Error(codes.Aborted, "transaction aborted"),
-			&ApplicationError{ErrorCode: 409, Status: FailedStatus, Message: "transaction aborted"},
+			409, "transaction aborted", FailedStatus,
 		},
 		{
 			"gRPC OutOfRange mapped to 400",
 			status.Error(codes.OutOfRange, "index out of range"),
-			&ApplicationError{ErrorCode: 400, Status: FailedStatus, Message: "index out of range"},
+			400, "index out of range", FailedStatus,
 		},
 		{
 			"gRPC Unauthenticated mapped to 401",
 			status.Error(codes.Unauthenticated, "missing token"),
-			&ApplicationError{ErrorCode: 401, Status: FailedStatus, Message: "missing token"},
+			401, "missing token", FailedStatus,
 		},
 		{
 			"gRPC Unavailable mapped to 502",
 			status.Error(codes.Unavailable, "service down"),
-			&ApplicationError{ErrorCode: 502, Status: FailedStatus, Message: "service down"},
+			502, "service down", FailedStatus,
 		},
 		{
 			"unknown gRPC code passes through as-is",
 			status.Error(451, "error rpc"),
-			&ApplicationError{ErrorCode: 451, Status: FailedStatus, Message: "error rpc"},
+			451, "error rpc", FailedStatus,
 		},
 		{
 			"error string with '=' — last segment extracted",
-			errors.New("context = deadline exceeded"),
-			&ApplicationError{ErrorCode: http.StatusInternalServerError, Status: FailedStatus, Message: "deadline exceeded"},
+			pkgerrors.New("context = deadline exceeded"),
+			http.StatusInternalServerError, "deadline exceeded", FailedStatus,
 		},
 		{
 			"error string without '=' — message unchanged",
-			errors.New("something went wrong"),
-			&ApplicationError{ErrorCode: http.StatusInternalServerError, Status: FailedStatus, Message: "something went wrong"},
+			pkgerrors.New("something went wrong"),
+			http.StatusInternalServerError, "something went wrong", FailedStatus,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if gotResult := ParseError(tt.err); !reflect.DeepEqual(gotResult, tt.wantResult) {
-				t.Errorf("ParseError() = %+v, want %+v", gotResult, tt.wantResult)
+			got := ParseError(tt.err)
+			if tt.err == nil {
+				if got != nil {
+					t.Errorf("ParseError(nil) = %+v, want nil", got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatalf("ParseError() returned nil, want ErrorCode=%d", tt.wantCode)
+			}
+			if got.ErrorCode != tt.wantCode {
+				t.Errorf("ErrorCode = %d, want %d", got.ErrorCode, tt.wantCode)
+			}
+			if got.Message != tt.wantMsg {
+				t.Errorf("Message = %q, want %q", got.Message, tt.wantMsg)
+			}
+			if got.Status != tt.wantStat {
+				t.Errorf("Status = %q, want %q", got.Status, tt.wantStat)
 			}
 		})
 	}
@@ -141,33 +158,40 @@ func TestParseError(t *testing.T) {
 
 func TestNewError(t *testing.T) {
 	tests := []struct {
-		name string
-		code int
-		stat string
-		msg  []string
-		want *ApplicationError
+		name     string
+		code     int
+		stat     string
+		msg      []string
+		wantCode int
+		wantMsg  string
 	}{
 		{
 			"with explicit message",
 			400, FailedStatus, []string{"Bad Request"},
-			&ApplicationError{ErrorCode: 400, Status: FailedStatus, Message: "Bad Request"},
+			400, "Bad Request",
 		},
 		{
 			"without message — uses StatusMessage",
 			400, FailedStatus, nil,
-			&ApplicationError{ErrorCode: 400, Status: FailedStatus, Message: "Bad Request"},
+			400, "Bad Request",
 		},
 		{
 			"unknown code — uses UndefinedMessage",
 			999, FailedStatus, nil,
-			&ApplicationError{ErrorCode: 999, Status: FailedStatus, Message: UndefinedMessage},
+			999, UndefinedMessage,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := NewError(tt.code, tt.stat, tt.msg...)
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewError() = %+v, want %+v", got, tt.want)
+			got, ok := NewError(tt.code, tt.stat, tt.msg...).(*ApplicationError)
+			if !ok {
+				t.Fatal("NewError() should return *ApplicationError")
+			}
+			if got.ErrorCode != tt.wantCode {
+				t.Errorf("ErrorCode = %d, want %d", got.ErrorCode, tt.wantCode)
+			}
+			if got.Message != tt.wantMsg {
+				t.Errorf("Message = %q, want %q", got.Message, tt.wantMsg)
 			}
 		})
 	}
@@ -218,7 +242,7 @@ func TestIsTimeout(t *testing.T) {
 		{"ErrDeadlineExceeded sentinel", ErrDeadlineExceeded, true},
 		{"DeadlineExceededError custom message", DeadlineExceededError("custom timeout msg"), true},
 		{"gRPC DeadlineExceeded", status.Error(codes.DeadlineExceeded, "deadline"), true},
-		{"plain error is not timeout", errors.New("not timeout"), false},
+		{"plain error is not timeout", pkgerrors.New("not timeout"), false},
 		// context.DeadlineExceeded implements Timeout() bool → true, so os.IsTimeout catches it.
 		{"context.DeadlineExceeded is detected via os.IsTimeout", context.DeadlineExceeded, true},
 	}
@@ -269,5 +293,198 @@ func TestCodeApplication_UnknownCode(t *testing.T) {
 	got := codeApplication(unknown)
 	if got != 999 {
 		t.Errorf("codeApplication(999) = %d, want 999", got)
+	}
+}
+
+// ── WithCause / Cause / Unwrap ────────────────────────────────────────────────
+
+func TestWithCause_RetainsFields(t *testing.T) {
+	base := NotFound("user not found")
+	cause := errors.New("sql: no rows")
+	wrapped := base.WithCause(cause)
+
+	if wrapped.ErrorCode != 404 {
+		t.Errorf("ErrorCode = %d, want 404", wrapped.ErrorCode)
+	}
+	if wrapped.Message != "user not found" {
+		t.Errorf("Message = %q, want %q", wrapped.Message, "user not found")
+	}
+	if wrapped.Cause() != cause {
+		t.Errorf("Cause() = %v, want %v", wrapped.Cause(), cause)
+	}
+}
+
+func TestWithCause_DoesNotMutateOriginal(t *testing.T) {
+	base := NotFound()
+	_ = base.WithCause(errors.New("some cause"))
+
+	if base.cause != nil {
+		t.Error("WithCause should not mutate the original error")
+	}
+}
+
+func TestUnwrap_TraversesChain(t *testing.T) {
+	root := errors.New("root cause")
+	ae := InternalError("something failed").WithCause(root)
+
+	if !errors.Is(ae, root) {
+		t.Error("errors.Is should find root cause through Unwrap chain")
+	}
+}
+
+// ── Is (errors.Is matching) ───────────────────────────────────────────────────
+
+func TestIs_MatchesBySentinel(t *testing.T) {
+	err := NotFound("custom message")
+
+	if !errors.Is(err, ErrNotFound) {
+		t.Error("errors.Is(NotFound(...), ErrNotFound) should return true")
+	}
+	if errors.Is(err, ErrBadRequest) {
+		t.Error("errors.Is(NotFound(...), ErrBadRequest) should return false")
+	}
+}
+
+func TestIs_WrappedInFmtErrorf(t *testing.T) {
+	inner := NotFound("item not found")
+	wrapped := fmt.Errorf("service: %w", inner)
+
+	if !errors.Is(wrapped, ErrNotFound) {
+		t.Error("errors.Is should detect ErrNotFound through fmt.Errorf wrapping")
+	}
+}
+
+func TestIs_DifferentMessage_StillMatches(t *testing.T) {
+	// Two errors with same code+status but different messages should match.
+	a := NotFound("user not found")
+	b := NotFound("product not found")
+
+	if !errors.Is(a, b) {
+		t.Error("ApplicationErrors with same code+status should match regardless of message")
+	}
+}
+
+// ── Named predicates ──────────────────────────────────────────────────────────
+
+func TestPredicates(t *testing.T) {
+	tests := []struct {
+		name      string
+		err       error
+		predicate func(error) bool
+		want      bool
+	}{
+		{"IsNotFound true", NotFound(), IsNotFound, true},
+		{"IsNotFound false", BadRequest(), IsNotFound, false},
+		{"IsBadRequest true", BadRequest(), IsBadRequest, true},
+		{"IsUnauthorized true", Unauthorized(), IsUnauthorized, true},
+		{"IsForbidden true", Forbidden(), IsForbidden, true},
+		{"IsConflict true", Conflict(), IsConflict, true},
+		{"IsUnprocessable true", UnprocessableEntity(), IsUnprocessable, true},
+		{"IsTooManyRequests true", TooManyRequests(), IsTooManyRequests, true},
+		{"IsInternalError true", InternalError(), IsInternalError, true},
+		{"IsServiceUnavailable true", ServiceUnavailable(), IsServiceUnavailable, true},
+		// wrapped error
+		{"IsNotFound wrapped", fmt.Errorf("wrap: %w", NotFound("x")), IsNotFound, true},
+		// plain error returns false
+		{"IsNotFound plain error", errors.New("oops"), IsNotFound, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.predicate(tt.err); got != tt.want {
+				t.Errorf("predicate(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+// ── Named constructors ────────────────────────────────────────────────────────
+
+func TestNamedConstructors_DefaultMessage(t *testing.T) {
+	tests := []struct {
+		name    string
+		err     *ApplicationError
+		wantCode int
+		wantMsg string
+	}{
+		{"BadRequest", BadRequest(), 400, "Bad Request"},
+		{"Unauthorized", Unauthorized(), 401, "Unauthorized"},
+		{"Forbidden", Forbidden(), 403, "Forbidden"},
+		{"NotFound", NotFound(), 404, "Not Found"},
+		{"Conflict", Conflict(), 409, "Conflict"},
+		{"UnprocessableEntity", UnprocessableEntity(), 422, "Unprocessable Entity"},
+		{"TooManyRequests", TooManyRequests(), 429, "Too Many Requests"},
+		{"InternalError", InternalError(), 500, "Internal Server error"},
+		{"ServiceUnavailable", ServiceUnavailable(), 503, "Service Unavailable"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.err.ErrorCode != tt.wantCode {
+				t.Errorf("ErrorCode = %d, want %d", tt.err.ErrorCode, tt.wantCode)
+			}
+			if tt.err.Message != tt.wantMsg {
+				t.Errorf("Message = %q, want %q", tt.err.Message, tt.wantMsg)
+			}
+		})
+	}
+}
+
+func TestNamedConstructors_CustomMessage(t *testing.T) {
+	err := NotFound("product id=42 not found")
+	if err.Message != "product id=42 not found" {
+		t.Errorf("Message = %q, want custom message", err.Message)
+	}
+	if err.ErrorCode != 404 {
+		t.Errorf("ErrorCode = %d, want 404", err.ErrorCode)
+	}
+}
+
+// ── ToGRPCStatus ──────────────────────────────────────────────────────────────
+
+func TestToGRPCStatus(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      *ApplicationError
+		wantCode codes.Code
+		wantMsg  string
+	}{
+		{"404 → NotFound", NotFound("item missing"), codes.NotFound, "item missing"},
+		{"400 → InvalidArgument", BadRequest("bad input"), codes.InvalidArgument, "bad input"},
+		{"401 → Unauthenticated", Unauthorized("no token"), codes.Unauthenticated, "no token"},
+		{"403 → PermissionDenied", Forbidden("denied"), codes.PermissionDenied, "denied"},
+		{"409 → Aborted", Conflict("conflict"), codes.Aborted, "conflict"},
+		{"422 → InvalidArgument", UnprocessableEntity("invalid"), codes.InvalidArgument, "invalid"},
+		{"429 → ResourceExhausted", TooManyRequests("slow down"), codes.ResourceExhausted, "slow down"},
+		{"500 → Internal", InternalError("oops"), codes.Internal, "oops"},
+		{"503 → Unavailable", ServiceUnavailable("down"), codes.Unavailable, "down"},
+		{"504 → DeadlineExceeded", build(504, FailedStatus, "timed out"), codes.DeadlineExceeded, "timed out"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			st := tt.err.ToGRPCStatus()
+			if st.Code() != tt.wantCode {
+				t.Errorf("Code = %v, want %v", st.Code(), tt.wantCode)
+			}
+			if st.Message() != tt.wantMsg {
+				t.Errorf("Message = %q, want %q", st.Message(), tt.wantMsg)
+			}
+		})
+	}
+}
+
+func TestToGRPCStatus_UnmappedCode(t *testing.T) {
+	// An HTTP code with no gRPC mapping should fall back to codes.Unknown.
+	err := build(418, FailedStatus, "I'm a teapot")
+	st := err.ToGRPCStatus()
+	if st.Code() != codes.Unknown {
+		t.Errorf("Code = %v, want Unknown", st.Code())
+	}
+}
+
+// ── httpCodeToGRPCCode ────────────────────────────────────────────────────────
+
+func TestHttpCodeToGRPCCode_UnknownFallback(t *testing.T) {
+	got := httpCodeToGRPCCode(999)
+	if got != codes.Unknown {
+		t.Errorf("httpCodeToGRPCCode(999) = %v, want Unknown", got)
 	}
 }

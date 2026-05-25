@@ -34,14 +34,58 @@ func New(errorCode int, status, message string) error {
 	}
 }
 
+// ApplicationError is the standard error type for this library.
+// It carries an HTTP status code, a status string, a human-readable message,
+// and an optional cause for error chaining.
 type ApplicationError struct {
 	ErrorCode int
 	Status    string
 	Message   string
+	cause     error // optional wrapped/underlying error
 }
 
 func (e *ApplicationError) Error() string {
 	return e.Message
+}
+
+// Unwrap returns the underlying cause so errors.Is / errors.As traverse the chain.
+func (e *ApplicationError) Unwrap() error {
+	return e.cause
+}
+
+// Cause returns the underlying cause error (may be nil).
+func (e *ApplicationError) Cause() error {
+	return e.cause
+}
+
+// WithCause returns a new *ApplicationError with the same ErrorCode/Status/Message
+// but with cause set to err. The original error is not mutated — safe to use on
+// shared sentinel errors.
+func (e *ApplicationError) WithCause(err error) *ApplicationError {
+	return &ApplicationError{
+		ErrorCode: e.ErrorCode,
+		Status:    e.Status,
+		Message:   e.Message,
+		cause:     err,
+	}
+}
+
+// Is reports whether this error matches target.
+// Two ApplicationErrors are considered equal when their ErrorCode and Status both match.
+// The Message field is intentionally ignored so sentinel-based errors.Is works
+// even when the message has been customised via WithCause or NewError.
+func (e *ApplicationError) Is(target error) bool {
+	var t *ApplicationError
+	if !errors.As(target, &t) {
+		return false
+	}
+	return e.ErrorCode == t.ErrorCode && e.Status == t.Status
+}
+
+// ToGRPCStatus converts the ApplicationError to a gRPC *status.Status.
+// The HTTP error code is mapped to the nearest gRPC code via httpCodeToGRPCCode.
+func (e *ApplicationError) ToGRPCStatus() *status.Status {
+	return status.New(httpCodeToGRPCCode(e.ErrorCode), e.Message)
 }
 
 // IsTimeout reports whether err is a timeout error.
@@ -265,4 +309,32 @@ func codeApplication(code codes.Code) int {
 		return m
 	}
 	return int(code)
+}
+
+// httpCodeToRPCCode maps HTTP status codes to the nearest gRPC status code.
+// Used by ToGRPCStatus to convert an ApplicationError back to gRPC.
+var httpCodeToRPCCode = map[int]codes.Code{
+	200: codes.OK,
+	400: codes.InvalidArgument,
+	401: codes.Unauthenticated,
+	403: codes.PermissionDenied,
+	404: codes.NotFound,
+	406: codes.Canceled,
+	409: codes.Aborted,
+	422: codes.InvalidArgument,
+	429: codes.ResourceExhausted,
+	500: codes.Internal,
+	501: codes.Unimplemented,
+	502: codes.Unavailable,
+	503: codes.Unavailable,
+	504: codes.DeadlineExceeded,
+}
+
+// httpCodeToGRPCCode maps an HTTP status code to the nearest gRPC code.
+// Falls back to codes.Unknown for unmapped codes.
+func httpCodeToGRPCCode(httpCode int) codes.Code {
+	if c, ok := httpCodeToRPCCode[httpCode]; ok {
+		return c
+	}
+	return codes.Unknown
 }

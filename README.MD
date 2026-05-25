@@ -528,11 +528,78 @@ resp, err := userClient.GetUser(ctx, &pb.GetUserRequest{Id: "u-123"})
 
 Standardized error types that map cleanly between HTTP status codes and gRPC codes.
 
-### Creating Errors
+### Named Constructors
+
+Preferred way to create errors — returns `*ApplicationError` so you can chain `.WithCause` without a type assertion:
 
 ```go
 import "github.com/ewinjuman/go-lib/v2/apperror"
 
+// Default message comes from the HTTP standard ("Not Found", "Bad Request", etc.)
+err := apperror.NotFound()
+err  = apperror.BadRequest()
+err  = apperror.Unauthorized()
+err  = apperror.Forbidden()
+err  = apperror.Conflict()
+err  = apperror.UnprocessableEntity()
+err  = apperror.TooManyRequests()
+err  = apperror.InternalError()
+err  = apperror.ServiceUnavailable()
+
+// Custom message
+err = apperror.NotFound("user id=42 not found")
+
+// Chain a root cause
+err = apperror.NotFound("user not found").WithCause(sql.ErrNoRows)
+
+// Retrieve the root cause
+if ae, ok := err.(*apperror.ApplicationError); ok {
+    fmt.Println(ae.Cause()) // sql.ErrNoRows
+}
+```
+
+### Sentinel Errors & errors.Is
+
+Named sentinels let you use `errors.Is` for type-safe checks, even through wrapped errors:
+
+```go
+// Sentinel variables — compare by ErrorCode + Status
+apperror.ErrNotFound
+apperror.ErrBadRequest
+apperror.ErrUnauthorized
+apperror.ErrForbidden
+apperror.ErrConflict
+apperror.ErrUnprocessableEntity
+apperror.ErrTooManyRequests
+apperror.ErrInternalError
+apperror.ErrServiceUnavailable
+
+// errors.Is works through fmt.Errorf wrapping
+err := fmt.Errorf("service layer: %w", apperror.NotFound("item missing"))
+errors.Is(err, apperror.ErrNotFound) // true
+```
+
+### Named Predicates
+
+Shorthand for `errors.Is` — works with wrapped errors:
+
+```go
+apperror.IsNotFound(err)          // true if err is/wraps a 404
+apperror.IsBadRequest(err)        // 400
+apperror.IsUnauthorized(err)      // 401
+apperror.IsForbidden(err)         // 403
+apperror.IsConflict(err)          // 409
+apperror.IsUnprocessable(err)     // 422
+apperror.IsTooManyRequests(err)   // 429
+apperror.IsInternalError(err)     // 500
+apperror.IsServiceUnavailable(err) // 503
+```
+
+### Low-level Constructors
+
+For custom status strings or non-standard codes:
+
+```go
 err := apperror.New(400, "VALIDATION_ERROR", "invalid email format")
 err  = apperror.NewError(404, "NOT_FOUND")
 err  = apperror.NewError(422, "UNPROCESSABLE", "email already exists")
@@ -552,14 +619,33 @@ fmt.Println(appErr.ErrorCode, appErr.Status, appErr.Message)
 text := apperror.StatusMessage(422) // "Unprocessable Entity"
 ```
 
-### ApplicationError Fields
+### Converting to gRPC Status
+
+```go
+appErr := apperror.NotFound("user not found")
+st := appErr.ToGRPCStatus()     // *status.Status
+return nil, st.Err()            // return from a gRPC handler
+```
+
+HTTP codes are mapped to the nearest gRPC code (404 → `NotFound`, 401 → `Unauthenticated`, 429 → `ResourceExhausted`, 504 → `DeadlineExceeded`, etc.). Unmapped codes fall back to `codes.Unknown`.
+
+### ApplicationError Type
 
 ```go
 type ApplicationError struct {
     ErrorCode int    // HTTP status code
     Status    string // e.g. "NOT_FOUND"
     Message   string // human-readable message
+    // cause is unexported — access via .Cause() and .Unwrap()
 }
+
+// Key methods:
+func (e *ApplicationError) Error() string
+func (e *ApplicationError) Unwrap() error                       // errors chain traversal
+func (e *ApplicationError) Cause() error                        // direct cause access
+func (e *ApplicationError) WithCause(err error) *ApplicationError // returns new instance — original unchanged
+func (e *ApplicationError) Is(target error) bool                // matches by ErrorCode + Status
+func (e *ApplicationError) ToGRPCStatus() *status.Status        // convert to gRPC status
 ```
 
 ---

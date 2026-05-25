@@ -123,7 +123,27 @@ Async by default — buffered channel + `WorkerPoolSize` goroutines (default 2).
 
 ### Error Package (`apperror`)
 
-`ApplicationError` carries `ErrorCode` (HTTP int), `Status` (string), `Message` (string). `ParseError(err)` handles gRPC `status.Error`, `*ApplicationError`, and plain errors uniformly. Named `apperror` (not `error`) to avoid shadowing the Go builtin.
+`ApplicationError` carries `ErrorCode` (HTTP int), `Status` (string), `Message` (string), and an unexported `cause error`. Named `apperror` (not `error`) to avoid shadowing the Go builtin.
+
+**Two files:**
+- `apperror/error.go` — core type, `New`, `NewError`, `ParseError`, `GetCode`, `IsTimeout`, `StatusMessage`, `DeadlineExceededError`, gRPC↔HTTP maps
+- `apperror/constructors.go` — named constructors, sentinel variables, named predicates
+
+**Named constructors** return `*ApplicationError` (not `error`) so callers can chain `.WithCause` without a type assertion: `apperror.NotFound("x").WithCause(sql.ErrNoRows)`.
+
+**Sentinel variables** (`ErrNotFound`, `ErrBadRequest`, etc.) allow `errors.Is` checks across error-wrapping boundaries. Two `ApplicationError`s are equal when `ErrorCode` **and** `Status` match — `Message` is ignored so `errors.Is(NotFound("x"), ErrNotFound)` returns `true`.
+
+**`WithCause(err error) *ApplicationError`** returns a **new** instance with the same ErrorCode/Status/Message and `cause` set. It does **not** mutate the original — sentinel errors can be shared safely.
+
+**`Unwrap() error`** exposes `cause` so `errors.Is`/`errors.As` traverse the full chain: `errors.Is(NotFound("x").WithCause(io.EOF), io.EOF)` returns `true`.
+
+**`ToGRPCStatus() *status.Status`** converts an `ApplicationError` to a gRPC status using the reverse HTTP→gRPC map (`httpCodeToRPCCode`). Unmapped codes fall back to `codes.Unknown`.
+
+**`ParseError(err)`** checks in order: (1) nil → nil, (2) gRPC status error → `codeApplication` map, (3) `*ApplicationError` via `errors.As` (handles wrapped errors), (4) plain error wrapped in 500. String-splitting on `=` extracts the last segment of context-style errors.
+
+**Named predicates** (`IsNotFound`, `IsBadRequest`, etc.) are shorthand for `errors.Is(err, ErrXxx)` — they work through any wrapping layer.
+
+**`rpcCodeToApplicationCode`** maps gRPC → HTTP. **`httpCodeToRPCCode`** maps HTTP → gRPC (reverse direction for `ToGRPCStatus`). Both are package-level maps; `codeApplication` and `httpCodeToGRPCCode` are the lookup helpers.
 
 ### Key Design Rules
 
@@ -143,3 +163,7 @@ Async by default — buffered channel + `WorkerPoolSize` goroutines (default 2).
 - **Local-only AppContext fields** (`responseStatus`, `port`, `srcIP`, `header`, `request`) are never added to the context chain — do not add them to `buildContext()`.
 - **`Clone()` for outgoing calls** — always use `Clone()` instead of passing the original AppContext to `grpc.CreateContext` or similar, so each hop gets a unique `requestID` while sharing `traceID`.
 - **`constant.TenantIDKey`** is now defined — use it to read tenant ID from stdlib context: `ctx.Value(constant.TenantIDKey).(string)`.
+- **Named constructors are preferred over `New`/`NewError`** for common HTTP codes — use `apperror.NotFound(...)`, `apperror.BadRequest(...)`, etc. Use `New`/`NewError` only for non-standard status strings or unusual codes.
+- **`WithCause` returns a new instance** — it never mutates the original. Safe to call on package-level sentinel variables.
+- **`Is()` matches by `ErrorCode` + `Status` only** — `Message` is intentionally excluded so `errors.Is(NotFound("custom"), ErrNotFound)` returns `true`.
+- **`ToGRPCStatus()` is for gRPC handler returns** — call `.Err()` on the result to get the gRPC-compatible error: `return nil, ae.ToGRPCStatus().Err()`.

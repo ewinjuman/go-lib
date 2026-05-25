@@ -20,7 +20,6 @@ import (
   "github.com/google/uuid"
   "go.uber.org/zap"
   "go.uber.org/zap/zapcore"
-  "gopkg.in/natefinch/lumberjack.v2"
 )
 
 // Level type untuk custom log levels
@@ -266,20 +265,14 @@ func New(opts Options) (*Logger, error) {
     ))
   }
 
-  // File output
+  // File output — menggunakan dailyRotatingWriter agar filename menyertakan
+  // tanggal (app-2026-05-25.log) dan file baru dibuat otomatis saat ganti hari.
   if opts.Filename != "" && opts.Write {
     if err := os.MkdirAll(filepath.Dir(opts.Filename), 0744); err != nil {
       return nil, fmt.Errorf("failed to create log directory: %w", err)
     }
 
-    writer := zapcore.AddSync(&lumberjack.Logger{
-      Filename:   opts.Filename,
-      MaxSize:    opts.MaxSize,
-      MaxBackups: opts.MaxBackups,
-      MaxAge:     opts.MaxAge,
-      Compress:   opts.Compress,
-      LocalTime:  true,
-    })
+    writer := zapcore.AddSync(newDailyRotatingWriter(opts))
 
     cores = append(cores, zapcore.NewCore(
       zapcore.NewJSONEncoder(encoderConfig),
@@ -315,7 +308,9 @@ func New(opts Options) (*Logger, error) {
     options:       opts,
     logBuffer:     make(chan LogEntry, opts.BufferSize),
     shutdownCh:    make(chan struct{}),
-    flushCh:       make(chan struct{}),
+    // flushCh dibuat buffered (kapasitas = jumlah worker) agar sinyal flush
+    // tidak hilang ketika worker sedang memproses batch dan belum block di channel.
+    flushCh: make(chan struct{}, opts.WorkerPoolSize),
   }
 
   // Start async processing if not disabled
@@ -372,9 +367,21 @@ func (l *Logger) processLogEntries() {
       flushBatch()
 
     case <-l.shutdownCh:
-      // Flush remaining entries before shutdown
-      flushBatch()
-      return
+      // Drain sisa entri di channel sebelum keluar, agar tidak ada log yang hilang
+      // saat Shutdown() dipanggil. Beberapa worker bisa drain bersamaan — aman
+      // karena channel receive bersifat atomic (setiap entri hanya diproses satu worker).
+      for {
+        select {
+        case entry := <-l.logBuffer:
+          batch = append(batch, entry)
+          if len(batch) >= l.options.BufferSize {
+            flushBatch()
+          }
+        default:
+          flushBatch()
+          return
+        }
+      }
     }
   }
 }
@@ -691,8 +698,11 @@ func (l *Logger) Fatal(ctx context.Context, msg string, fields ...Field) {
 
 // maskComplexValue melakukan masking pada struktur data kompleks
 func (l *Logger) maskComplexValue(val interface{}, path string) interface{} {
-  if val == nil || l.options.DisableMasking {
+  if val == nil {
     return nil
+  }
+  if l.options.DisableMasking {
+    return val // kembalikan nilai asli tanpa masking
   }
 
   value := reflect.ValueOf(val)

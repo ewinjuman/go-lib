@@ -5,8 +5,10 @@ import (
 	"strings"
 )
 
+// emailRegex dikompilasi sekali saat package diload, bukan setiap kali isValidEmail dipanggil.
+var emailRegex = regexp.MustCompile(`^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,4}$`)
+
 func isValidEmail(email string) bool {
-	emailRegex := regexp.MustCompile(`^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,4}$`)
 	return emailRegex.MatchString(email)
 }
 

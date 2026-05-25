@@ -1,8 +1,8 @@
 package apperror
 
 import (
-  "errors"
-  "net/http"
+	"errors"
+	"net/http"
 )
 
 // ── Named sentinel errors ─────────────────────────────────────────────────────
@@ -20,25 +20,25 @@ import (
 //	return apperror.NewError(http.StatusNotFound, apperror.FailedStatus, "user not found")
 
 var (
-  ErrBadRequest          = newSentinel(http.StatusBadRequest, FailedStatus)
-  ErrUnauthorized        = newSentinel(http.StatusUnauthorized, FailedStatus)
-  ErrForbidden           = newSentinel(http.StatusForbidden, FailedStatus)
-  ErrNotFound            = newSentinel(http.StatusNotFound, FailedStatus)
-  ErrConflict            = newSentinel(http.StatusConflict, FailedStatus)
-  ErrUnprocessableEntity = newSentinel(http.StatusUnprocessableEntity, FailedStatus)
-  ErrTooManyRequests     = newSentinel(http.StatusTooManyRequests, FailedStatus)
-  ErrInternalError       = newSentinel(http.StatusInternalServerError, FailedStatus)
-  ErrServiceUnavailable  = newSentinel(http.StatusServiceUnavailable, FailedStatus)
+	ErrBadRequest          = newSentinel(http.StatusBadRequest, FailedStatus)
+	ErrUnauthorized        = newSentinel(http.StatusUnauthorized, FailedStatus)
+	ErrForbidden           = newSentinel(http.StatusForbidden, FailedStatus)
+	ErrNotFound            = newSentinel(http.StatusNotFound, FailedStatus)
+	ErrConflict            = newSentinel(http.StatusConflict, FailedStatus)
+	ErrUnprocessableEntity = newSentinel(http.StatusUnprocessableEntity, FailedStatus)
+	ErrTooManyRequests     = newSentinel(http.StatusTooManyRequests, FailedStatus)
+	ErrInternalError       = newSentinel(http.StatusInternalServerError, FailedStatus)
+	ErrServiceUnavailable  = newSentinel(http.StatusServiceUnavailable, FailedStatus)
 )
 
 // newSentinel builds a minimal ApplicationError used as a sentinel value.
 // The message is the standard HTTP status text for the code.
 func newSentinel(code int, stat string) *ApplicationError {
-  return &ApplicationError{
-    ErrorCode: code,
-    Status:    stat,
-    Message:   StatusMessage(code),
-  }
+	return &ApplicationError{
+		ErrorCode: code,
+		Status:    stat,
+		Message:   StatusMessage(code),
+	}
 }
 
 // ── Named constructors ────────────────────────────────────────────────────────
@@ -49,60 +49,60 @@ func newSentinel(code int, stat string) *ApplicationError {
 
 // BadRequest returns a 400 ApplicationError.
 func BadRequest(message ...string) *ApplicationError {
-  return build(http.StatusBadRequest, FailedStatus, message...)
+	return build(http.StatusBadRequest, FailedStatus, message...)
 }
 
 // Unauthorized returns a 401 ApplicationError.
 func Unauthorized(message ...string) *ApplicationError {
-  return build(http.StatusUnauthorized, FailedStatus, message...)
+	return build(http.StatusUnauthorized, FailedStatus, message...)
 }
 
 // Forbidden returns a 403 ApplicationError.
 func Forbidden(message ...string) *ApplicationError {
-  return build(http.StatusForbidden, FailedStatus, message...)
+	return build(http.StatusForbidden, FailedStatus, message...)
 }
 
 // NotFound returns a 404 ApplicationError.
 func NotFound(message ...string) *ApplicationError {
-  return build(http.StatusNotFound, FailedStatus, message...)
+	return build(http.StatusNotFound, FailedStatus, message...)
 }
 
 // Conflict returns a 409 ApplicationError.
 func Conflict(message ...string) *ApplicationError {
-  return build(http.StatusConflict, FailedStatus, message...)
+	return build(http.StatusConflict, FailedStatus, message...)
 }
 
 // UnprocessableEntity returns a 422 ApplicationError.
 func UnprocessableEntity(message ...string) *ApplicationError {
-  return build(http.StatusUnprocessableEntity, FailedStatus, message...)
+	return build(http.StatusUnprocessableEntity, FailedStatus, message...)
 }
 
 // TooManyRequests returns a 429 ApplicationError.
 func TooManyRequests(message ...string) *ApplicationError {
-  return build(http.StatusTooManyRequests, FailedStatus, message...)
+	return build(http.StatusTooManyRequests, FailedStatus, message...)
 }
 
 // InternalError returns a 500 ApplicationError.
 func InternalError(message ...string) *ApplicationError {
-  return build(http.StatusInternalServerError, FailedStatus, message...)
+	return build(http.StatusInternalServerError, FailedStatus, message...)
 }
 
 // ServiceUnavailable returns a 503 ApplicationError.
 func ServiceUnavailable(message ...string) *ApplicationError {
-  return build(http.StatusServiceUnavailable, FailedStatus, message...)
+	return build(http.StatusServiceUnavailable, FailedStatus, message...)
 }
 
 // build is the shared factory used by all named constructors.
 func build(code int, stat string, message ...string) *ApplicationError {
-  msg := StatusMessage(code)
-  if len(message) > 0 {
-    msg = message[0]
-  }
-  return &ApplicationError{
-    ErrorCode: code,
-    Status:    stat,
-    Message:   msg,
-  }
+	msg := StatusMessage(code)
+	if len(message) > 0 {
+		msg = message[0]
+	}
+	return &ApplicationError{
+		ErrorCode: code,
+		Status:    stat,
+		Message:   msg,
+	}
 }
 
 // ── Named predicates ──────────────────────────────────────────────────────────

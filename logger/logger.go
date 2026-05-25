@@ -143,14 +143,14 @@ type Logger struct {
   logger        *zap.Logger
   maskingPaths  []string
   redactionPath []string
-  defaultFields map[string]string
   options       Options
 
   // Buffer untuk asynchronous logging
-  logBuffer  chan LogEntry
-  shutdownCh chan struct{}
-  flushCh    chan struct{}
-  wg         sync.WaitGroup
+  logBuffer    chan LogEntry
+  shutdownCh   chan struct{}
+  shutdownOnce sync.Once // cegah panic "close of closed channel" jika Shutdown dipanggil dua kali
+  flushCh      chan struct{}
+  wg           sync.WaitGroup
 
   // Cache untuk path masking matching (optimasi)
   maskingCache sync.Map
@@ -310,7 +310,7 @@ func New(opts Options) (*Logger, error) {
     shutdownCh:    make(chan struct{}),
     // flushCh dibuat buffered (kapasitas = jumlah worker) agar sinyal flush
     // tidak hilang ketika worker sedang memproses batch dan belum block di channel.
-    flushCh: make(chan struct{}, opts.WorkerPoolSize),
+    flushCh:       make(chan struct{}, opts.WorkerPoolSize),
   }
 
   // Start async processing if not disabled
@@ -391,6 +391,14 @@ func (l *Logger) processLogEntry(entry LogEntry) {
   // Convert fields
   zapFields := l.convertToZapFields(entry.Fields)
 
+  // Tambahkan "logged_at" — waktu saat user memanggil Info/Debug/etc (call site).
+  // Ini berbeda dengan field "timestamp" bawaan zap yang mencatat waktu worker
+  // memproses entry. Selisih biasanya < FlushInterval (500ms), tapi penting untuk
+  // debugging timing di high-throughput service.
+  if !entry.Timestamp.IsZero() {
+    zapFields = append([]zap.Field{zap.Time("logged_at", entry.Timestamp)}, zapFields...)
+  }
+
   // Add caller information (captured at call site to survive async dispatch)
   if entry.Caller != "" {
     zapFields = append(zapFields, zap.String("caller", entry.Caller))
@@ -422,16 +430,14 @@ func (l *Logger) processLogEntry(entry LogEntry) {
   }
 }
 
-// Shutdown gracefully shuts down the logger
+// Shutdown gracefully shuts down the logger.
+// Aman dipanggil lebih dari sekali — pemanggilan berikutnya adalah no-op.
 func (l *Logger) Shutdown() {
-  // Send shutdown signal to all workers
-  close(l.shutdownCh)
-
-  // Wait for all workers to finish
-  l.wg.Wait()
-
-  // Sync the underlying zap logger
-  _ = l.logger.Sync()
+  l.shutdownOnce.Do(func() {
+    close(l.shutdownCh)
+    l.wg.Wait()
+    _ = l.logger.Sync()
+  })
 }
 
 // Flush manually flushes the log buffer across all workers
@@ -446,8 +452,8 @@ func (l *Logger) Flush() {
 
 // WithContext menambahkan appContext ke log entry
 func (l *Logger) WithContext(ctx context.Context) *zap.Logger {
-  fields := []zap.Field{}
-  
+  var fields []zap.Field // lazy alloc: hanya alokasi jika ctx mengandung nilai
+
   // Add trace ID
   if traceID, ok := ctx.Value(constant.TraceIDKey).(string); ok {
     fields = append(fields, zap.String("trace_id", traceID))
@@ -543,10 +549,19 @@ func (l *Logger) convertToZapFields(fields []Field) []zap.Field {
 }
 
 // Helper methods
+
+// getStackTrace menangkap stack trace goroutine saat ini.
+// Buffer dimulai dari 4KB dan digandakan sampai cukup menampung seluruh trace —
+// mencegah truncation pada call stack yang dalam (misalnya middleware chains).
 func getStackTrace() string {
-  buf := make([]byte, 1024)
-  n := runtime.Stack(buf, false)
-  return string(buf[:n])
+  buf := make([]byte, 4<<10) // 4 KB awal
+  for {
+    n := runtime.Stack(buf, false)
+    if n < len(buf) {
+      return string(buf[:n])
+    }
+    buf = make([]byte, 2*len(buf)) // buffer terlalu kecil, double dan coba lagi
+  }
 }
 
 // needsMasking cek apakah sebuah field perlu dimasking (dengan cache)
@@ -771,7 +786,18 @@ func (l *Logger) maskMap(value reflect.Value) interface{} {
     strKey := fmt.Sprint(key.Interface())
     mapValue := value.MapIndex(key)
 
-    // Jika value adalah string, cek masking berdasarkan key
+    // Unwrap interface{} — penting untuk map[string]interface{} yang merupakan
+    // kasus paling umum di request body. Tanpa ini, mapValue.Kind() == Interface
+    // sehingga string di dalamnya tidak akan ter-mask.
+    if mapValue.Kind() == reflect.Interface {
+      mapValue = mapValue.Elem()
+    }
+
+    if !mapValue.IsValid() {
+      result[strKey] = nil
+      continue
+    }
+
     if mapValue.Kind() == reflect.String {
       result[strKey] = l.maskStringIfNeeded(strKey, mapValue.String())
     } else {
@@ -794,12 +820,11 @@ func (l *Logger) maskSlice(value reflect.Value) interface{} {
   return result
 }
 
-// Printf implementasi untuk kompatibilitas dengan gorm
+// Printf implementasi untuk kompatibilitas dengan gorm.
+// Guard len(v) > 1 sebelumnya salah — GORM sering panggil Printf dengan 1 arg
+// (misal Printf("sql: %s", sql)) sehingga log hilang diam-diam.
 func (l *Logger) Printf(format string, v ...interface{}) {
-  if len(v) > 1 {
-    fm := fmt.Sprintf(format, v...)
-    l.Info(context.Background(), "ORM LOG", String("value", fm))
-  }
+  l.Info(context.Background(), "ORM LOG", String("value", fmt.Sprintf(format, v...)))
 }
 
 // Print implementasi untuk kompatibilitas dengan library lain dan Writer interface
@@ -839,9 +864,17 @@ func InitLogger(opts Options) {
 }
 
 // GetLogger returns the global singleton logger, initializing with defaults if not yet set.
+// Thread-safe: nil check dilakukan di dalam once.Do untuk menghindari data race.
+// Jika InitLogger sudah dipanggil lebih dulu, instance yang ada digunakan (tidak override).
 func GetLogger() *Logger {
-  if instance == nil {
-    InitLogger(DefaultOptions())
-  }
+  once.Do(func() {
+    if instance == nil {
+      l, err := New(DefaultOptions())
+      if err != nil {
+        panic(err)
+      }
+      instance = l
+    }
+  })
   return instance
 }

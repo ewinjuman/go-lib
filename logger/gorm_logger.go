@@ -35,27 +35,25 @@ func (l *GormLogger) LogMode(level gormlogger.LogLevel) gormlogger.Interface {
 	return &newLogger
 }
 
-// Info logs info messages in a non-blocking way
+// Info logs info messages. Logger.Info sudah async (channel-buffered),
+// tidak perlu goroutine tambahan yang hanya membuang-buang GC pressure.
 func (l *GormLogger) Info(ctx context.Context, msg string, data ...interface{}) {
 	if l.LogLevel >= gormlogger.Info {
-		formattedMsg := fmt.Sprintf(msg, data...)
-		go l.Logger.Info(ctx, "GORM", String("message", formattedMsg))
+		l.Logger.Info(ctx, "GORM", String("message", fmt.Sprintf(msg, data...)))
 	}
 }
 
-// Warn logs warn messages in a non-blocking way
+// Warn logs warn messages. Logger.Warn sudah async (channel-buffered).
 func (l *GormLogger) Warn(ctx context.Context, msg string, data ...interface{}) {
 	if l.LogLevel >= gormlogger.Warn {
-		formattedMsg := fmt.Sprintf(msg, data...)
-		go l.Logger.Warn(ctx, "GORM", String("message", formattedMsg))
+		l.Logger.Warn(ctx, "GORM", String("message", fmt.Sprintf(msg, data...)))
 	}
 }
 
-// Error logs error messages in a non-blocking way
+// Error logs error messages. Logger.Error sudah async (channel-buffered).
 func (l *GormLogger) Error(ctx context.Context, msg string, data ...interface{}) {
 	if l.LogLevel >= gormlogger.Error {
-		formattedMsg := fmt.Sprintf(msg, data...)
-		go l.Logger.Error(ctx, "GORM", String("message", formattedMsg))
+		l.Logger.Error(ctx, "GORM", String("message", fmt.Sprintf(msg, data...)))
 	}
 }
 

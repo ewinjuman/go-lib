@@ -209,11 +209,38 @@ In middleware, create the AppContext with the Fiber request context so deadlines
 func contextMiddleware(c *fiber.Ctx) error {
     appCtx := appContext.New(c.UserContext(), log).
         SetRequestID(c.Get("X-Request-ID")).
+        SetTenantID(c.Get("X-Tenant-ID")).
         SetIP(c.IP()).
         SetMethod(c.Method()).
         SetURL(c.Path())
     c.Locals(constant.AppContextKey, appCtx)
     return c.Next()
+}
+
+// After-middleware: log response info
+func afterMiddleware(c *fiber.Ctx) error {
+    err := c.Next()
+    appCtx := appContext.FromFiber(c)
+    appCtx.SetResponseStatus(c.Response().StatusCode())
+    appCtx.Log().Info("request completed",
+        logger.Int("status", appCtx.GetResponseStatus()),
+        logger.Duration("elapsed", appCtx.Duration()),
+    )
+    return err
+}
+```
+
+### From stdlib context (service layer)
+
+AppContext is stored inside the context chain automatically when `ToContext()` is called. Any service layer that receives a `context.Context` can retrieve it:
+
+```go
+func (s *UserService) CreateUser(ctx context.Context, req CreateUserRequest) error {
+    appCtx := appContext.FromContext(ctx) // never panics — returns nil if not found
+    if appCtx != nil {
+        appCtx.Log().Info("creating user", logger.String("email", req.Email))
+    }
+    // ...
 }
 ```
 
@@ -226,6 +253,7 @@ Fields propagated to `context.Context` (available via `constant.*Key` in downstr
 | `SetRequestID(string)` | `GetRequestID() string` | `constant.RequestIDKey` |
 | `SetTraceID(string)` | `GetTraceID() string` | `constant.TraceIDKey` |
 | `SetUserID(string)` | `GetUserID() string` | `constant.UserIDKey` |
+| `SetTenantID(string)` | `GetTenantID() string` | `constant.TenantIDKey` |
 | `SetRequestTime(time.Time)` | `GetRequestTime() time.Time` | `constant.RequestTimeKey` |
 | `SetMethod(string)` | `GetMethod() string` | `constant.RequestMethodKey` |
 | `SetURL(string)` | `GetURL() string` | `constant.RequestPathKey` |
@@ -236,10 +264,11 @@ Fields stored locally (not propagated to context):
 
 | Setter | Getter | Purpose |
 |--------|--------|---------|
-| `SetPort(int)` | `GetPort() int` | Listening port (local only) |
-| `SetSrcIP(string)` | `GetSrcIP() string` | Source IP before proxying (local only) |
-| `SetHeader(interface{})` | `GetHeader() interface{}` | Raw request header (local only) |
-| `SetRequest(interface{})` | `GetRequest() interface{}` | Raw request body (local only) |
+| `SetResponseStatus(int)` | `GetResponseStatus() int` | HTTP response code (set in after-middleware) |
+| `SetPort(int)` | `GetPort() int` | Listening port |
+| `SetSrcIP(string)` | `GetSrcIP() string` | Source IP before proxying |
+| `SetHeader(interface{})` | `GetHeader() interface{}` | Raw request header |
+| `SetRequest(interface{})` | `GetRequest() interface{}` | Raw request body |
 
 All setters are chainable and safe for concurrent use.
 
@@ -270,12 +299,32 @@ tenantID := appCtx.Get("tenant_id", "default") // second arg = default value
 appCtx.Remove("tenant_id")
 ```
 
+### Clone — for outgoing service calls
+
+`Clone()` creates a new AppContext with a fresh `requestID` and `requestTime` while carrying over all propagated identity fields (`traceID`, `userID`, `tenantID`, etc.). Local-only fields and the key-value store are not copied.
+
+```go
+// Outgoing call to another microservice
+outCtx := appCtx.Clone()
+grpcCtx, cancel := conn.CreateContext(ctx, outCtx)
+defer cancel()
+resp, err := userClient.GetUser(grpcCtx, req)
+```
+
 ### Propagating to stdlib context
 
 ```go
 ctx := appCtx.ToContext()
-// Propagated fields (trace_id, request_id, user_id, etc.) are now in ctx.
+// Propagated fields (trace_id, request_id, user_id, tenant_id, etc.) are now in ctx.
+// The AppContext itself is also in ctx — retrieve it anywhere with FromContext(ctx).
 // Result is cached — no allocations on repeated calls until a Set* changes a field.
+```
+
+### Duration
+
+```go
+// Elapsed time since request started — useful in after-middleware
+appCtx.Duration() // time.Duration
 ```
 
 ---

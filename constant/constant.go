@@ -15,4 +15,5 @@ const (
 	RequestIDKey      ContextKey = "request_id"
 	TraceIDKey        ContextKey = "trace_id"
 	UserIDKey         ContextKey = "user_id"
+	TenantIDKey       ContextKey = "tenant_id"
 )

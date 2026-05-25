@@ -50,14 +50,24 @@ go test -run=^$ -bench=. -benchmem -benchtime=3s ./bench/...
 `appContext.New(ctx context.Context, log *Logger)` — `ctx` is stored as `parentCtx` so `ToContext()` chains from it rather than `context.Background()`, preserving deadlines and cancellation. `log` is optional; `nil` falls back to `logger.GetLogger()`.
 
 **All fields are unexported.** Use the `Set*` / `Get*` accessors:
-- Propagated to context via `ToContext()`: `requestID`, `traceID`, `userID`, `requestTime`, `method`, `url`, `ip`, `userAgent`
-- Local-only (never added to context): `port`, `srcIP`, `header`, `request`
+- Propagated to context via `ToContext()`: `requestID`, `traceID`, `userID`, `tenantID`, `requestTime`, `method`, `url`, `ip`, `userAgent`
+- Local-only (never added to context): `responseStatus`, `port`, `srcIP`, `header`, `request`
 
 **`FromFiber(c *fiber.Ctx)`** never returns nil — if no AppContext is found in `c.Locals`, it returns `New(c.UserContext(), nil)` so callers never need a nil-check.
 
-**`SetURL(url string) *AppContext`** was added alongside the other setters; `url` maps to `constant.RequestPathKey` in the context.
+**`FromContext(ctx context.Context) *AppContext`** retrieves the AppContext from any stdlib context. Returns nil if not found. Works because `buildContext()` always stores the AppContext itself under `constant.AppContextKey` in the context chain. This allows service layers that only receive `ctx` to access the full AppContext without Fiber dependency.
 
-**`ToContext()` caches its result.** On the first call (or after any propagated-field `Set*`), it builds the context chain (up to 8 `context.WithValue` calls) under a write lock, stores it in `cachedCtx`, and returns it. Subsequent calls return the cached pointer under an RLock. The cache is invalidated (`cachedCtx = nil`) inside every `Set*` method that touches a propagated field. Local-only setters (`SetPort`, `SetSrcIP`, `SetHeader`, `SetRequest`) do **not** invalidate the cache.
+**`Clone() *AppContext`** creates a derived AppContext with a new `requestID` and `requestTime`, copying all propagated identity fields (`traceID`, `userID`, `tenantID`, `ip`, `userAgent`, `url`, `method`). Local-only fields and `cMap` are not copied. Used for outgoing service-to-service calls so each hop has its own requestID while sharing the same traceID.
+
+**`Duration() time.Duration`** returns `time.Since(requestTime)` under RLock. Used in after-middleware for response time logging.
+
+**`SetResponseStatus(int)` / `GetResponseStatus() int`** stores the HTTP response status code locally (never propagated to context since it's known only after the response is sent). Used in after-middleware.
+
+**`SetTenantID(string)` / `GetTenantID() string`** propagated to context under `constant.TenantIDKey`. Added for multi-tenant SaaS patterns.
+
+**`SetURL(url string) *AppContext`** propagates to context under `constant.RequestPathKey`.
+
+**`ToContext()` caches its result.** On the first call (or after any propagated-field `Set*`), it builds the context chain (up to 10 `context.WithValue` calls, including AppContext itself) under a write lock, stores it in `cachedCtx`, and returns it. Subsequent calls return the cached pointer under an RLock. The cache is invalidated (`cachedCtx = nil`) inside every `Set*` method that touches a propagated field. Local-only setters (`SetResponseStatus`, `SetPort`, `SetSrcIP`, `SetHeader`, `SetRequest`) do **not** invalidate the cache.
 
 **All field access is protected by `sync.RWMutex`** — all getters use `RLock`, all setters use `Lock`.
 
@@ -128,5 +138,8 @@ Async by default — buffered channel + `WorkerPoolSize` goroutines (default 2).
 - **Log filename includes date** — `opts.Filename` is the base path; `dailyRotatingWriter` appends `-YYYY-MM-DD` before the extension. Never hardcode a dated filename in `opts.Filename`.
 - **`AppContext` fields are all unexported** — never add public fields to `AppContext`; always expose via `Set*`/`Get*` methods with mutex protection.
 - **`FromFiber` is always safe to call** — it never returns nil; the nil-fallback is `New(c.UserContext(), nil)`. No nil-check needed at call sites.
+- **`FromContext` may return nil** — always nil-check the result; it returns nil when the context was not built from an AppContext.
 - **`ToContext()` cache invalidation is automatic** — call `Set*` before any `Log()` call during request setup; the first `Log()` builds and caches the context. Do not manually call `ToContext()` in hot paths just to pre-warm it.
-- **Local-only AppContext fields** (`port`, `srcIP`, `header`, `request`) are never added to the context chain — do not add new local-only fields to `buildContext()`.
+- **Local-only AppContext fields** (`responseStatus`, `port`, `srcIP`, `header`, `request`) are never added to the context chain — do not add them to `buildContext()`.
+- **`Clone()` for outgoing calls** — always use `Clone()` instead of passing the original AppContext to `grpc.CreateContext` or similar, so each hop gets a unique `requestID` while sharing `traceID`.
+- **`constant.TenantIDKey`** is now defined — use it to read tenant ID from stdlib context: `ctx.Value(constant.TenantIDKey).(string)`.

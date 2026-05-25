@@ -82,9 +82,17 @@ httpclient.Post("https://api.example.com/users").
 
 ### Logger
 
-Async by default — buffered channel + `WorkerPoolSize` goroutines (default 2). Call `log.Shutdown()` to flush before process exit; `log.Flush()` notifies all workers. Caller is captured at the call site before async dispatch (in `LogEntry.Caller`) using `utils.FileWithLineNum()` to survive the goroutine hop.
+Async by default — buffered channel + `WorkerPoolSize` goroutines (default 2). Call `log.Shutdown()` to flush before process exit — **idempotent** (safe to call multiple times; uses `sync.Once` internally). `log.Flush()` signals all workers via a buffered `flushCh` (capacity = `WorkerPoolSize`) so signals are not lost while workers are busy. Caller is captured at the call site before async dispatch (in `LogEntry.Caller`) using `utils.FileWithLineNum()` to survive the goroutine hop.
 
-`MaskingPaths` → partial masking (e.g. email → `u***@***.com`). `RedactionPaths` → `[REDACTED]`. Both are case-insensitive and cached in a `sync.Map`. GORM integration is in `logger/gorm_logger.go`.
+**File rotation** is handled by `dailyRotatingWriter` (`logger/rotating_writer.go`), which wraps `lumberjack.Logger`. The active log file is named with the current date: `<basename>-YYYY-MM-DD<ext>` (e.g. `logs/app-2026-05-25.log`). When midnight passes, the next `Write` call transparently opens a new dated file — no process restart needed. Size-based rotation within a day is still managed by lumberjack via `MaxSize`. `MaxAge` (in **days**) and `MaxBackups` apply to rotated backup files only.
+
+**Async log timing:** `LogEntry.Timestamp` is captured at the call site and written as `logged_at` in each entry, showing when the event actually occurred. The `timestamp` field is set by zap when the worker processes the entry. Typical delay between the two is < `FlushInterval` (500ms default).
+
+**`GetLogger()`** performs the `instance == nil` check inside `once.Do` — thread-safe, no data race on concurrent first calls.
+
+**`GormLogger.Info/Warn/Error`** delegate directly to `l.Logger.Info/Warn/Error` (no extra `go` wrapper) since the logger is already async. `GormLogger.Trace` keeps its own goroutine because it runs non-trivial computation (`fc()`) before logging.
+
+`MaskingPaths` → partial masking (e.g. email → `u***@***.com`, only TLD shown in domain). `RedactionPaths` → `[REDACTED]`. Both are case-insensitive and cached in a `sync.Map`. `maskMap` unwraps `reflect.Interface` before checking kind — correctly masks string values inside `map[string]interface{}`. GORM integration is in `logger/gorm_logger.go`.
 
 ### Error Package (`apperror`)
 
@@ -98,3 +106,6 @@ Async by default — buffered channel + `WorkerPoolSize` goroutines (default 2).
 - **`Log()` returns `*ContextualLogger`**, not `*Logger` — do not bypass it by calling `ac.Log().Underlying().Info(ctx, ...)` unless raw zap access is truly needed.
 - **README.MD is the source of truth for public API examples** — keep it in sync after any API change.
 - **`WithOutput` and `Consume`/`SaveToFile` are mutually exclusive** — after `WithOutput`, `Response.Body` is nil; calling `Consume` or `SaveToFile` returns `ErrEmptyResponseBody`.
+- **`log.Shutdown()` is idempotent** — safe to `defer` in multiple places (main + signal handler). Second call is a no-op.
+- **`MaxAge` in logger `Options` is in days**, not hours — matches lumberjack's unit.
+- **Log filename includes date** — `opts.Filename` is the base path; `dailyRotatingWriter` appends `-YYYY-MM-DD` before the extension. Never hardcode a dated filename in `opts.Filename`.

@@ -45,10 +45,10 @@ opts := logger.Options{
     Environment: "production",
     Stdout:      true,           // print to console
     Write:       true,           // write to file
-    Filename:    "logs/app.log",
-    MaxSize:     100,            // MB before rotation
+    Filename:    "logs/app.log", // active file: logs/app-2026-05-25.log (date appended automatically)
+    MaxSize:     100,            // MB — size-based rotation within a day
     MaxBackups:  7,
-    MaxAge:      24,             // hours
+    MaxAge:      7,              // days to keep rotated backup files
     Level:       logger.InfoLevel,
 }
 
@@ -56,7 +56,7 @@ log, err := logger.New(opts)
 if err != nil {
     panic(err)
 }
-defer log.Shutdown()
+defer log.Shutdown() // safe to call multiple times (idempotent)
 ```
 
 Or use the global singleton:
@@ -103,7 +103,9 @@ opts := logger.Options{
 }
 ```
 
-Masking example: `"email": "u***@***.com"`, `"token": "ab****xyz"`
+Masking example: `"email": "u***@***.com"` (domain masked, only TLD shown), `"token": "ab****xyz"`
+
+> **Async log timing:** Each log entry includes a `logged_at` field capturing the exact time the caller invoked `Info`/`Debug`/etc. The `timestamp` field records when the async worker processed the entry — typically within `FlushInterval` (500ms default).
 
 ### HTTP / gRPC Request Logging
 
@@ -140,10 +142,10 @@ gormDB, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 | `Environment` | string | `"development"` | Environment tag (dev/staging/prod) |
 | `Stdout` | bool | `true` | Print to console |
 | `Write` | bool | `false` | Write to file |
-| `Filename` | string | `""` | Log file path |
-| `MaxSize` | int | `100` | Max file size in MB before rotation |
-| `MaxBackups` | int | `7` | Number of rotated files to keep |
-| `MaxAge` | int | `24` | Max age in hours for rotated files |
+| `Filename` | string | `""` | Base log file path — date is appended automatically (e.g. `logs/app-2026-05-25.log`). A new file is created each day; process restart not required. |
+| `MaxSize` | int | `100` | Max file size in MB before size-based rotation within a day |
+| `MaxBackups` | int | `7` | Number of rotated backup files to keep |
+| `MaxAge` | int | `24` | Max age in **days** to retain rotated backup files |
 | `Compress` | bool | `true` | Compress rotated log files |
 | `Level` | Level | `InfoLevel` | Minimum log level |
 | `MaskingPaths` | []string | `nil` | Fields to partially mask |

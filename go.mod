@@ -6,7 +6,6 @@ require (
 	github.com/go-resty/resty/v2 v2.11.0
 	github.com/gofiber/fiber/v2 v2.52.12-0.20260206174030-5494de86f38e
 	github.com/google/uuid v1.6.0
-	github.com/orcaman/concurrent-map v1.0.0
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.27.0

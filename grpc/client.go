@@ -24,7 +24,7 @@ type RpcConnection struct {
 func (rpc *RpcConnection) CreateContext(parent context.Context, appCtx *appContext.AppContext) (ctx context.Context, cancel context.CancelFunc) {
 	ctx, cancel = context.WithTimeout(parent, rpc.options.Timeout*time.Second)
 	ctx = context.WithValue(ctx, constant.AppContextKey, appCtx)
-	md := metadata.New(map[string]string{"Request-Id": appCtx.RequestID})
+	md := metadata.New(map[string]string{"Request-Id": appCtx.GetRequestID()})
 	ctx = metadata.NewOutgoingContext(ctx, md)
 	return
 }

@@ -3,64 +3,18 @@ package main
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/ewinjuman/go-lib/v2/appContext"
 	"github.com/ewinjuman/go-lib/v2/logger"
 )
 
-var (
-	// instance singleton dari logger
-	instance *logger.Logger
-	once     sync.Once
-)
-
-// InitLogger inisialisasi logger sekali saja
-func InitLogger(opts logger.Options) {
-	once.Do(func() {
-		logger, err := logger.New(opts)
-		if err != nil {
-			panic(err)
-		}
-		instance = logger
-	})
+// getLogger mengembalikan global singleton logger via logger.GetLogger().
+// Jika ingin konfigurasi kustom, panggil logger.New() terlebih dulu sebelum getLogger().
+func getLogger() *logger.Logger {
+	return logger.GetLogger()
 }
 
-func GetLogger() *logger.Logger {
-	option := logger.Options{
-		AppName:     "myapp",
-		Environment: "production",
-		Stdout:      true,
-		Write:       true,
-		Filename:    "log/app.log",
-		MaxSize:     100,
-		MaxBackups:  7,
-		MaxAge:      0,
-		Level:       logger.InfoLevel,
-		MaskingPaths: []string{
-			"credit_card",
-			"ssn",
-			"Token",
-			"authorization",
-			"secret",
-			"key",
-			"access_token",
-			"email",
-		},
-		RedactionPaths: []string{
-			"pasSworD",
-			"PiN",
-		},
-		EnableTrace: true,
-		Development: false,
-	}
-	if instance == nil {
-		// Default config jika belum diinisialisasi
-		InitLogger(option)
-	}
-	return instance
-}
 func main() {
 	user := struct {
 		ID       string `json:"id"`
@@ -75,11 +29,10 @@ func main() {
 	}
 
 	start := time.Now()
-	log := GetLogger()
+	log := getLogger()
 	appCtx := appContext.New(context.Background(), log)
 	defer log.Shutdown()
 
-	//appCtx.SetRequestID("requestID") // set if needed
 	appCtx.Log().Info("Start", logger.String("user", "kamu"), logger.String("token", "udhs908711"))
 	appCtx.Log().Info("print struct", logger.Interface("user", user))
 	appCtx.Log().Info("masking", logger.String("token", "12345789"), logger.String("Email", "user@example.com"))

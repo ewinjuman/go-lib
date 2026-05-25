@@ -165,6 +165,8 @@ gormDB, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 
 Request-scoped context for propagating request metadata (trace IDs, user IDs, IP, etc.) across service layers.
 
+All fields are **unexported** — use the provided `Set*` / `Get*` accessor methods. `ToContext()` result is cached and only rebuilt when a propagated field changes, so calling `Log()` many times per request is cheap.
+
 ### Creating a Context
 
 `New` takes a parent `context.Context` as first argument so deadlines and cancellations from the HTTP request are preserved. The logger is optional — if `nil`, the global singleton is used.
@@ -183,7 +185,8 @@ appCtx := appContext.New(ctx, log).
     SetTraceID("trace-abc-123").
     SetUserID("user-456").
     SetIP("192.168.1.1").
-    SetMethod("POST")
+    SetMethod("POST").
+    SetURL("/api/orders")
 
 // With nil logger — falls back to global singleton
 appCtx = appContext.New(ctx, nil)
@@ -193,6 +196,7 @@ appCtx = appContext.New(ctx, nil)
 
 ```go
 func handler(c *fiber.Ctx) error {
+    // FromFiber never returns nil — falls back to New(c.UserContext(), nil)
     appCtx := appContext.FromFiber(c)
     appCtx.Log().Info("handling request")
     return nil
@@ -205,11 +209,39 @@ In middleware, create the AppContext with the Fiber request context so deadlines
 func contextMiddleware(c *fiber.Ctx) error {
     appCtx := appContext.New(c.UserContext(), log).
         SetRequestID(c.Get("X-Request-ID")).
-        SetIP(c.IP())
+        SetIP(c.IP()).
+        SetMethod(c.Method()).
+        SetURL(c.Path())
     c.Locals(constant.AppContextKey, appCtx)
     return c.Next()
 }
 ```
+
+### Setters & Getters
+
+Fields propagated to `context.Context` (available via `constant.*Key` in downstream calls):
+
+| Setter | Getter | Context key |
+|--------|--------|-------------|
+| `SetRequestID(string)` | `GetRequestID() string` | `constant.RequestIDKey` |
+| `SetTraceID(string)` | `GetTraceID() string` | `constant.TraceIDKey` |
+| `SetUserID(string)` | `GetUserID() string` | `constant.UserIDKey` |
+| `SetRequestTime(time.Time)` | `GetRequestTime() time.Time` | `constant.RequestTimeKey` |
+| `SetMethod(string)` | `GetMethod() string` | `constant.RequestMethodKey` |
+| `SetURL(string)` | `GetURL() string` | `constant.RequestPathKey` |
+| `SetIP(string)` | `GetIP() string` | `constant.RequestIPKey` |
+| `SetUserAgent(string)` | `GetUserAgent() string` | `constant.RequestAgentKey` |
+
+Fields stored locally (not propagated to context):
+
+| Setter | Getter | Purpose |
+|--------|--------|---------|
+| `SetPort(int)` | `GetPort() int` | Listening port (local only) |
+| `SetSrcIP(string)` | `GetSrcIP() string` | Source IP before proxying (local only) |
+| `SetHeader(interface{})` | `GetHeader() interface{}` | Raw request header (local only) |
+| `SetRequest(interface{})` | `GetRequest() interface{}` | Raw request body (local only) |
+
+All setters are chainable and safe for concurrent use.
 
 ### Logging via AppContext
 
@@ -230,9 +262,11 @@ appCtx.Log().LogResponseGrpc(startTime, method, "GRPC", responseBody)
 
 ### Custom Key-Value Storage
 
+Thread-safe key-value store scoped to the request (backed by `sync.Map`):
+
 ```go
 appCtx.Put("tenant_id", "tenant-001")
-tenantID := appCtx.Get("tenant_id", "default")
+tenantID := appCtx.Get("tenant_id", "default") // second arg = default value
 appCtx.Remove("tenant_id")
 ```
 
@@ -240,7 +274,8 @@ appCtx.Remove("tenant_id")
 
 ```go
 ctx := appCtx.ToContext()
-// All fields (trace_id, request_id, user_id, etc.) are now in ctx
+// Propagated fields (trace_id, request_id, user_id, etc.) are now in ctx.
+// Result is cached — no allocations on repeated calls until a Set* changes a field.
 ```
 
 ---

@@ -15,6 +15,7 @@ go test ./...
 go test ./httpclient/...
 go test ./logger/...
 go test ./apperror/...
+go test ./appContext/...
 
 # Run a single test by name
 go test -run TestRequest_DoRequest ./httpclient/...
@@ -47,6 +48,22 @@ go test -run=^$ -bench=. -benchmem -benchtime=3s ./bench/...
 ### AppContext
 
 `appContext.New(ctx context.Context, log *Logger)` — `ctx` is stored as `parentCtx` so `ToContext()` chains from it rather than `context.Background()`, preserving deadlines and cancellation. `log` is optional; `nil` falls back to `logger.GetLogger()`.
+
+**All fields are unexported.** Use the `Set*` / `Get*` accessors:
+- Propagated to context via `ToContext()`: `requestID`, `traceID`, `userID`, `requestTime`, `method`, `url`, `ip`, `userAgent`
+- Local-only (never added to context): `port`, `srcIP`, `header`, `request`
+
+**`FromFiber(c *fiber.Ctx)`** never returns nil — if no AppContext is found in `c.Locals`, it returns `New(c.UserContext(), nil)` so callers never need a nil-check.
+
+**`SetURL(url string) *AppContext`** was added alongside the other setters; `url` maps to `constant.RequestPathKey` in the context.
+
+**`ToContext()` caches its result.** On the first call (or after any propagated-field `Set*`), it builds the context chain (up to 8 `context.WithValue` calls) under a write lock, stores it in `cachedCtx`, and returns it. Subsequent calls return the cached pointer under an RLock. The cache is invalidated (`cachedCtx = nil`) inside every `Set*` method that touches a propagated field. Local-only setters (`SetPort`, `SetSrcIP`, `SetHeader`, `SetRequest`) do **not** invalidate the cache.
+
+**All field access is protected by `sync.RWMutex`** — all getters use `RLock`, all setters use `Lock`.
+
+**Key-value store** (`Put`/`Get`/`Remove`) uses stdlib `sync.Map` — no external dependency. The `github.com/orcaman/concurrent-map` dependency was removed.
+
+**`grpc/client.go`** uses `appCtx.GetRequestID()` (not the old public field `appCtx.RequestID`).
 
 `Log()` returns a `*logger.ContextualLogger` already bound to the current request context. Callers never pass `ToContext()` manually:
 
@@ -109,3 +126,7 @@ Async by default — buffered channel + `WorkerPoolSize` goroutines (default 2).
 - **`log.Shutdown()` is idempotent** — safe to `defer` in multiple places (main + signal handler). Second call is a no-op.
 - **`MaxAge` in logger `Options` is in days**, not hours — matches lumberjack's unit.
 - **Log filename includes date** — `opts.Filename` is the base path; `dailyRotatingWriter` appends `-YYYY-MM-DD` before the extension. Never hardcode a dated filename in `opts.Filename`.
+- **`AppContext` fields are all unexported** — never add public fields to `AppContext`; always expose via `Set*`/`Get*` methods with mutex protection.
+- **`FromFiber` is always safe to call** — it never returns nil; the nil-fallback is `New(c.UserContext(), nil)`. No nil-check needed at call sites.
+- **`ToContext()` cache invalidation is automatic** — call `Set*` before any `Log()` call during request setup; the first `Log()` builds and caches the context. Do not manually call `ToContext()` in hot paths just to pre-warm it.
+- **Local-only AppContext fields** (`port`, `srcIP`, `header`, `request`) are never added to the context chain — do not add new local-only fields to `buildContext()`.

@@ -3,6 +3,7 @@ package httpclient
 
 import (
 	"crypto/tls"
+	"fmt"
 	"net/http"
 	"net/url"
 	"time"
@@ -20,7 +21,13 @@ type Client struct {
 	defaultBasicPass string
 	middlewares      []Middleware
 	cookieJar        http.CookieJar
-	transport        http.RoundTripper // nil = http.DefaultTransport
+
+	// Transport knobs — stored individually so they compose without clobbering each other.
+	// WithTransport sets transport directly and takes precedence over all three knobs.
+	skipTLS   bool           // set by WithSkipTLS; per-request skipTLS OR-ed in buildHTTPClient
+	tlsCfg    *tls.Config    // set by WithTLSConfig; ignored when skipTLS is true
+	proxyURL  string         // set by WithProxy; validated at option creation time
+	transport http.RoundTripper // full override; if non-nil, knobs above are ignored
 }
 
 // ClientOption configures a Client during New().
@@ -86,29 +93,26 @@ func WithCookieJar(jar http.CookieJar) ClientOption {
 
 // WithSkipTLS disables TLS certificate verification for all requests from this client.
 // Use only in development/testing — never in production.
+// Composable with WithProxy and WithTLSConfig (last one wins if both set TLS).
 func WithSkipTLS() ClientOption {
-	return func(c *Client) {
-		c.transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // intentional for dev/test
-		}
-	}
+	return func(c *Client) { c.skipTLS = true }
 }
 
 // WithTLSConfig sets a custom TLS configuration for all requests from this client.
+// Ignored when WithSkipTLS is also set (InsecureSkipVerify takes precedence).
 func WithTLSConfig(cfg *tls.Config) ClientOption {
-	return func(c *Client) { c.transport = &http.Transport{TLSClientConfig: cfg} }
+	return func(c *Client) { c.tlsCfg = cfg }
 }
 
 // WithProxy sets an HTTP proxy URL for all requests from this client.
-// Silently ignores invalid proxy URLs.
+// Panics at construction time if proxyURL is not a valid absolute URL with a host
+// (e.g. "http://proxy:8080"). Composable with WithSkipTLS and WithTLSConfig.
 func WithProxy(proxyURL string) ClientOption {
-	return func(c *Client) {
-		parsed, err := url.Parse(proxyURL)
-		if err != nil {
-			return
-		}
-		c.transport = &http.Transport{Proxy: http.ProxyURL(parsed)}
+	parsed, err := url.Parse(proxyURL)
+	if err != nil || parsed.Host == "" {
+		panic(fmt.Sprintf("httpclient: invalid proxy URL %q: host must not be empty", proxyURL))
 	}
+	return func(c *Client) { c.proxyURL = proxyURL }
 }
 
 // WithTransport replaces the underlying http.RoundTripper.
@@ -118,13 +122,32 @@ func WithTransport(t http.RoundTripper) ClientOption {
 }
 
 // buildHTTPClient constructs a net/http.Client for a single Execute() call.
-// skipTLS overrides c.transport with an InsecureSkipVerify transport when true and transport is nil.
+//
+// Transport resolution order (highest priority first):
+//  1. c.transport (WithTransport) — full override; knobs below are ignored.
+//  2. Composed *http.Transport from c.skipTLS||perRequestSkipTLS, c.tlsCfg, c.proxyURL.
+//  3. nil → net/http uses http.DefaultTransport.
+//
+// perRequestSkipTLS is true when the RequestBuilder called WithSkipTLS() for this request.
 // timeout is applied only when > 0.
-func (c *Client) buildHTTPClient(skipTLS bool, timeout time.Duration) *http.Client {
-	transport := c.transport
-	if skipTLS && transport == nil {
-		transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // intentional for dev/test
+func (c *Client) buildHTTPClient(perRequestSkipTLS bool, timeout time.Duration) *http.Client {
+	var transport http.RoundTripper
+	if c.transport != nil {
+		transport = c.transport
+	} else {
+		wantCustomTransport := c.skipTLS || perRequestSkipTLS || c.tlsCfg != nil || c.proxyURL != ""
+		if wantCustomTransport {
+			t := &http.Transport{}
+			if c.skipTLS || perRequestSkipTLS {
+				t.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // intentional for dev/test
+			} else if c.tlsCfg != nil {
+				t.TLSClientConfig = c.tlsCfg
+			}
+			if c.proxyURL != "" {
+				parsed, _ := url.Parse(c.proxyURL) // already validated in WithProxy
+				t.Proxy = http.ProxyURL(parsed)
+			}
+			transport = t
 		}
 	}
 	hc := &http.Client{Jar: c.cookieJar, Transport: transport}
@@ -135,31 +158,24 @@ func (c *Client) buildHTTPClient(skipTLS bool, timeout time.Duration) *http.Clie
 }
 
 // Post creates a RequestBuilder for a POST request to path.
-// Panics until Task 4 wires newRequestBuilder.
 func (c *Client) Post(path string) *RequestBuilder { return c.newBuilder(MethodPost, path) }
 
 // Get creates a RequestBuilder for a GET request to path.
-// Panics until Task 4 wires newRequestBuilder.
 func (c *Client) Get(path string) *RequestBuilder { return c.newBuilder(MethodGet, path) }
 
 // Put creates a RequestBuilder for a PUT request to path.
-// Panics until Task 4 wires newRequestBuilder.
 func (c *Client) Put(path string) *RequestBuilder { return c.newBuilder(MethodPut, path) }
 
 // Delete creates a RequestBuilder for a DELETE request to path.
-// Panics until Task 4 wires newRequestBuilder.
 func (c *Client) Delete(path string) *RequestBuilder { return c.newBuilder(MethodDelete, path) }
 
 // Patch creates a RequestBuilder for a PATCH request to path.
-// Panics until Task 4 wires newRequestBuilder.
 func (c *Client) Patch(path string) *RequestBuilder { return c.newBuilder(MethodPatch, path) }
 
 // Options creates a RequestBuilder for an OPTIONS request to path.
-// Panics until Task 4 wires newRequestBuilder.
 func (c *Client) Options(path string) *RequestBuilder { return c.newBuilder(MethodOptions, path) }
 
-// newBuilder is the internal factory. Delegates to newRequestBuilder once Task 4 defines it.
-// Until then, it panics at runtime to signal the dependency is not yet wired.
+// newBuilder is the internal factory; replaced by the real implementation in request.go (Task 4).
 func (c *Client) newBuilder(method Method, path string) *RequestBuilder {
-	panic("newRequestBuilder not yet implemented — Task 4 must be completed first")
+	panic("httpclient: internal error: newBuilder not yet wired — ensure request.go is compiled")
 }

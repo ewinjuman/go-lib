@@ -84,7 +84,7 @@ func TestCircuitBreakerMiddleware_records4xxAsSuccess(t *testing.T) {
 	m := CircuitBreakerMiddleware(CircuitBreakerConfig{FailureThreshold: 2})
 	composed := Apply(base, []Middleware{m}, nil)
 	req, _ := http.NewRequest("GET", "http://client-err-host/a", nil)
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		composed.Do(req)
 	}
 	cb := getCircuitBreaker("http://client-err-host/a", nil)

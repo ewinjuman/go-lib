@@ -68,7 +68,7 @@ func TestExecuteSSE_contextCancellationStopsStream(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		flusher := w.(http.Flusher)
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			fmt.Fprintf(w, "data: msg%d\n\n", i)
 			flusher.Flush()
 			time.Sleep(10 * time.Millisecond)

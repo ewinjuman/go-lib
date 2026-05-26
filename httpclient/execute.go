@@ -25,9 +25,8 @@ import (
 )
 
 var (
-	jsonCheck = regexp.MustCompile(`(?i:(application|text)/(.*json.*)(;|$))`)
-	xmlCheck  = regexp.MustCompile(`(?i:(application|text)/(.*xml.*)(;|$))`)
-	bufPool   = sync.Pool{New: func() any { return new(bytes.Buffer) }}
+	xmlCheck = regexp.MustCompile(`(?i:(application|text)/(.*xml.*)(;|$))`)
+	bufPool  = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 )
 
 // buildURL joins the client base URL with rb.path and replaces :param placeholders.

@@ -108,11 +108,9 @@ func parseSSELine(line string) (key, value string) {
 	if strings.HasPrefix(line, ":") {
 		return "", strings.TrimPrefix(line, ": ")
 	}
-	idx := strings.Index(line, ":")
-	if idx < 0 {
+	k, v, found := strings.Cut(line, ":")
+	if !found {
 		return line, ""
 	}
-	key = line[:idx]
-	value = strings.TrimPrefix(line[idx+1:], " ")
-	return key, value
+	return k, strings.TrimPrefix(v, " ")
 }

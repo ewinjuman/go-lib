@@ -28,7 +28,7 @@ func TestExponentialBackoff_doublesEachAttempt(t *testing.T) {
 
 func TestExponentialWithJitter_withinExpectedRange(t *testing.T) {
 	bf := ExponentialWithJitter(100*time.Millisecond, 2.0)
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		// attempt=1 → base=200ms; jitter adds [0, 200ms] → total [200ms, 400ms]
 		d := bf(1)
 		assert.GreaterOrEqual(t, int64(d), int64(200*time.Millisecond))

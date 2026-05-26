@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"io"
+	"maps"
 	"net/http"
 	"time"
 
@@ -134,8 +135,10 @@ func (rb *RequestBuilder) WithGraphQL(q string, vars map[string]any) *RequestBui
 }
 
 // WithQueryParams sets the query string parameters for this request.
+// The map is copied defensively — mutations to params after this call have no effect.
 func (rb *RequestBuilder) WithQueryParams(params map[string]string) *RequestBuilder {
-	rb.queryParams = params
+	rb.queryParams = make(map[string]string, len(params))
+	maps.Copy(rb.queryParams, params)
 	return rb
 }
 
@@ -145,8 +148,10 @@ func (rb *RequestBuilder) WithQueryParam(params map[string]string) *RequestBuild
 }
 
 // WithPathParam replaces :key placeholders in the URL path.
+// The map is copied defensively — mutations to params after this call have no effect.
 func (rb *RequestBuilder) WithPathParam(params map[string]string) *RequestBuilder {
-	rb.pathParams = params
+	rb.pathParams = make(map[string]string, len(params))
+	maps.Copy(rb.pathParams, params)
 	return rb
 }
 

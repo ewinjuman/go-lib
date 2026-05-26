@@ -2,6 +2,7 @@
 package httpclient
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -131,4 +132,58 @@ func TestClient_builderMethods_returnRequestBuilderWithCorrectClient(t *testing.
 		require.NotNil(t, rb)
 		assert.Same(t, c, rb.client)
 	}
+}
+
+func TestRequestBuilder_WithPathParam_setsMap(t *testing.T) {
+	rb := testClient().Get("/users/:id").WithPathParam(map[string]string{"id": "42"})
+	assert.Equal(t, "42", rb.pathParams["id"])
+}
+
+func TestRequestBuilder_WithPathParam_defensiveCopy(t *testing.T) {
+	params := map[string]string{"id": "42"}
+	rb := testClient().Get("/users/:id").WithPathParam(params)
+	params["id"] = "mutated"
+	assert.Equal(t, "42", rb.pathParams["id"], "mutation of source map must not affect builder")
+}
+
+func TestRequestBuilder_WithQueryParams_defensiveCopy(t *testing.T) {
+	params := map[string]string{"q": "go"}
+	rb := testClient().Get("/search").WithQueryParams(params)
+	params["q"] = "mutated"
+	assert.Equal(t, "go", rb.queryParams["q"], "mutation of source map must not affect builder")
+}
+
+func TestRequestBuilder_WithCookie_appendsCookie(t *testing.T) {
+	rb := testClient().Get("/").WithCookie("session", "abc123")
+	require.Len(t, rb.cookies, 1)
+	assert.Equal(t, "session", rb.cookies[0].Name)
+	assert.Equal(t, "abc123", rb.cookies[0].Value)
+}
+
+func TestRequestBuilder_WithOutput_setsWriter(t *testing.T) {
+	var buf strings.Builder
+	rb := testClient().Get("/").WithOutput(&buf)
+	assert.Equal(t, &buf, rb.output)
+}
+
+func TestRequestBuilder_WithDebug_setsFlag(t *testing.T) {
+	rb := testClient().Get("/").WithDebug(true)
+	assert.True(t, rb.debug)
+}
+
+func TestRequestBuilder_WithContext_setsCtx(t *testing.T) {
+	type key struct{}
+	ctx := context.WithValue(context.Background(), key{}, "val")
+	rb := testClient().Get("/").WithContext(ctx)
+	assert.Equal(t, ctx, rb.ctx)
+}
+
+func TestRequestBuilder_WithRequestID_setsID(t *testing.T) {
+	rb := testClient().Get("/").WithRequestID("req-001")
+	assert.Equal(t, "req-001", rb.requestID)
+}
+
+func TestRequestBuilder_WithSkipTLS_setsFlag(t *testing.T) {
+	rb := testClient().Get("/").WithSkipTLS()
+	assert.True(t, rb.skipTLS)
 }

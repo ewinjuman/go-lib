@@ -175,7 +175,7 @@ func (c *Client) Patch(path string) *RequestBuilder { return c.newBuilder(Method
 // Options creates a RequestBuilder for an OPTIONS request to path.
 func (c *Client) Options(path string) *RequestBuilder { return c.newBuilder(MethodOptions, path) }
 
-// newBuilder is the internal factory; replaced by the real implementation in request.go (Task 4).
+// newBuilder creates a RequestBuilder for the given method and path.
 func (c *Client) newBuilder(method Method, path string) *RequestBuilder {
-	panic("httpclient: internal error: newBuilder not yet wired — ensure request.go is compiled")
+	return newRequestBuilder(c, method, path)
 }

@@ -81,12 +81,10 @@ func RetryMiddleware(cfg RetryConfig) Middleware {
 				err  error
 			)
 			for attempt := 0; attempt < max; attempt++ {
-				if req.Context() != nil {
-					select {
-					case <-req.Context().Done():
-						return nil, req.Context().Err()
-					default:
-					}
+				select {
+				case <-req.Context().Done():
+					return nil, req.Context().Err()
+				default:
 				}
 
 				resp, err = next.Do(req)

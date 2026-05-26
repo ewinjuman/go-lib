@@ -12,9 +12,13 @@ import (
 
 var (
 	ErrCircuitOpen     = errors.New("circuit breaker is open")
-	ErrAppsCircuitOpen = Error.NewError(123, "FAILED", "circuit breaker is open")
+	ErrAppsCircuitOpen *Error.ApplicationError
 	cbRegistry         sync.Map // map[string]*CircuitBreaker, keyed by scheme://host
 )
+
+func init() {
+	ErrAppsCircuitOpen = Error.NewError(123, "FAILED", "circuit breaker is open").(*Error.ApplicationError).WithCause(ErrCircuitOpen)
+}
 
 // CircuitBreakerConfig holds tunable parameters for a circuit breaker.
 // Zero values fall back to package defaults.
@@ -123,7 +127,8 @@ func (cb *CircuitBreaker) RecordFailure() {
 	}
 
 	failureRate := float64(cb.failureCount) / float64(cb.totalRequestCount)
-	if cb.failureCount >= cb.failureThreshold || failureRate >= cb.failureRateThreshold {
+	if cb.failureCount >= cb.failureThreshold &&
+		(cb.failureRateThreshold <= 0 || failureRate >= cb.failureRateThreshold) {
 		cb.state = "OPEN"
 		cb.lastFailureTime = time.Now()
 	}

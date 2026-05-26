@@ -57,6 +57,8 @@ func (rb *RequestBuilder) ExecuteSSE(callback func(SSEEvent) error) error {
 
 // parseSSEStream reads an SSE body line by line and calls callback for each complete event.
 func parseSSEStream(r io.Reader, callback func(SSEEvent) error) error {
+	// bufio.Scanner default token size is 64 KB; SSE data lines larger than
+	// bufio.MaxScanTokenSize (65536 bytes) will return bufio.ErrTooLong.
 	scanner := bufio.NewScanner(r)
 	var current SSEEvent
 	current.Event = "message"

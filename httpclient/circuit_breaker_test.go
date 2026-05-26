@@ -39,19 +39,23 @@ func TestCircuitBreaker_transitionsHalfOpenThenClosedOnSuccess(t *testing.T) {
 
 func TestCircuitBreakerMiddleware_blocksWhenCircuitIsOpen(t *testing.T) {
 	cbRegistry.Delete("http://blocked-host")
+
+	// Trip the circuit via the middleware using a 5xx response (FailureThreshold: 1).
+	tripBase := DoerFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 503, Body: http.NoBody}, nil
+	})
+	m := CircuitBreakerMiddleware(CircuitBreakerConfig{FailureThreshold: 1})
+	tripComposed := Apply(tripBase, []Middleware{m}, nil)
+	req, _ := http.NewRequest("GET", "http://blocked-host/path", nil)
+	tripComposed.Do(req) // records a failure; circuit opens (failureCount=1 >= threshold=1, rate=1.0 >= 0.5)
+
+	// Now verify the circuit is open and blocks a subsequent request.
 	called := false
-	base := DoerFunc(func(r *http.Request) (*http.Response, error) {
+	successBase := DoerFunc(func(r *http.Request) (*http.Response, error) {
 		called = true
 		return &http.Response{StatusCode: 200, Body: http.NoBody}, nil
 	})
-	m := CircuitBreakerMiddleware(CircuitBreakerConfig{FailureThreshold: 1})
-	composed := Apply(base, []Middleware{m}, nil)
-
-	// Manually open the circuit
-	cb := getCircuitBreaker("http://blocked-host/path", nil)
-	cb.RecordFailure()
-
-	req, _ := http.NewRequest("GET", "http://blocked-host/path", nil)
+	composed := Apply(successBase, []Middleware{m}, nil)
 	_, err := composed.Do(req)
 	assert.Error(t, err)
 	assert.False(t, called, "base Doer must not be called when circuit is open")

@@ -16,7 +16,7 @@ import (
 )
 
 // newJSONServer creates an httptest.Server that always replies with status + JSON body.
-func newJSONServer(t *testing.T, status int, body interface{}) *httptest.Server {
+func newJSONServer(t *testing.T, status int, body any) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

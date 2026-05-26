@@ -104,7 +104,9 @@ func (rb *RequestBuilder) buildBody() (io.Reader, string, error) {
 				}
 			}
 		}
-		w.Close()
+		if err := w.Close(); err != nil {
+			return nil, "", fmt.Errorf("finalize multipart body: %w", err)
+		}
 		return &buf, w.FormDataContentType(), nil
 
 	case bodyModeRaw:
@@ -140,7 +142,7 @@ func (rb *RequestBuilder) applyDefaults() {
 
 func (rb *RequestBuilder) logResponse(ctx context.Context, response *Response, header http.Header, rawURL string, responseTime time.Duration) {
 	contentType := header.Get("Content-Type")
-	var result interface{}
+	var result any
 	switch {
 	case xmlCheck.MatchString(contentType):
 		if err := xml.Unmarshal(response.Body, &result); err != nil {

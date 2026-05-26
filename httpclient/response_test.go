@@ -13,8 +13,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func jsonBody(v any) []byte {
-	b, _ := json.Marshal(v)
+func jsonBody(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("jsonBody: marshal failed: %v", err)
+	}
 	return b
 }
 
@@ -36,25 +40,36 @@ func TestResponse_IsError(t *testing.T) {
 
 func TestResponse_Consume_success(t *testing.T) {
 	type result struct{ Name string }
-	r := &Response{StatusCode: 200, SuccessCodes: []int{200}, Body: jsonBody(result{"alice"})}
+	r := &Response{StatusCode: 200, SuccessCodes: []int{200}, Body: jsonBody(t, result{"alice"})}
 	var got result
 	require.NoError(t, r.Consume(&got))
 	assert.Equal(t, "alice", got.Name)
 }
 
+func TestResponse_Consume_nilDestination_returnsError(t *testing.T) {
+	// nil destination must return a clear error, not a confusing unmarshal error.
+	r := &Response{StatusCode: 200, SuccessCodes: []int{200}, Body: []byte(`{}`)}
+	err := r.Consume(nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "nil")
+}
+
 func TestResponse_Consume_errorPropagated(t *testing.T) {
+	var got any
 	r := &Response{Error: errors.New("network error"), SuccessCodes: []int{200}}
-	assert.Error(t, r.Consume(nil))
+	assert.Error(t, r.Consume(&got))
 }
 
 func TestResponse_Consume_nonSuccessStatus(t *testing.T) {
+	var got any
 	r := &Response{StatusCode: 404, SuccessCodes: []int{200}, Body: []byte(`{"error":"not found"}`)}
-	assert.Error(t, r.Consume(nil))
+	assert.Error(t, r.Consume(&got))
 }
 
 func TestResponse_Consume_nilBody_returnsErrEmpty(t *testing.T) {
+	var got any
 	r := &Response{StatusCode: 200, SuccessCodes: []int{200}, Body: nil}
-	assert.ErrorIs(t, r.Consume(nil), ErrEmptyResponseBody)
+	assert.ErrorIs(t, r.Consume(&got), ErrEmptyResponseBody)
 }
 
 func TestResponse_ConsumeXML(t *testing.T) {
@@ -129,9 +144,18 @@ func TestResponse_HttpCode(t *testing.T) {
 	assert.Equal(t, 201, r.HttpCode())
 }
 
+func TestResponse_ConsumeXML_nilDestination_returnsError(t *testing.T) {
+	// nil guard fires before status/body checks — no need to set other fields.
+	r := &Response{}
+	err := r.ConsumeXML(nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "nil")
+}
+
 func TestResponse_ConsumeXML_nilBody_returnsErrEmpty(t *testing.T) {
+	var got any
 	r := &Response{StatusCode: 200, SuccessCodes: []int{200}, Body: nil}
-	assert.ErrorIs(t, r.ConsumeXML(nil), ErrEmptyResponseBody)
+	assert.ErrorIs(t, r.ConsumeXML(&got), ErrEmptyResponseBody)
 }
 
 func TestResponse_ConsumeText_nilBody_returnsErrEmpty(t *testing.T) {

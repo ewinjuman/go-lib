@@ -61,8 +61,12 @@ func (r *Response) IsError() (bool, error) {
 func (r *Response) HttpCode() int { return r.StatusCode }
 
 // Consume JSON-unmarshals Body into v. Returns an error if transport failed,
-// status is not in SuccessCodes, or Body is nil.
+// status is not in SuccessCodes, Body is nil, or v is nil.
+// v must be a non-nil pointer; passing nil produces a clear error before unmarshal.
 func (r *Response) Consume(v any) error {
+	if v == nil {
+		return errors.New("consume: destination must not be nil")
+	}
 	if r.Error != nil {
 		return r.Error
 	}
@@ -80,6 +84,9 @@ func (r *Response) Consume(v any) error {
 
 // ConsumeXML XML-unmarshals Body into v. Same preconditions as Consume.
 func (r *Response) ConsumeXML(v any) error {
+	if v == nil {
+		return errors.New("consume: destination must not be nil")
+	}
 	if r.Error != nil {
 		return r.Error
 	}

@@ -2,6 +2,7 @@ package httpclient
 
 import (
 	"errors"
+	"net/http"
 	"net/url"
 	"sync"
 	"time"
@@ -132,4 +133,30 @@ func (cb *CircuitBreaker) State() string {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 	return cb.state
+}
+
+// CircuitBreakerMiddleware wraps each request with circuit-breaker protection.
+// State is global per host (keyed by scheme://host in cbRegistry sync.Map).
+// cfg is applied only when a circuit breaker is first created for a host.
+// 5xx responses and transport errors are recorded as failures; 4xx and 2xx as successes.
+func CircuitBreakerMiddleware(cfg CircuitBreakerConfig) Middleware {
+	return NewMiddleware(CircuitBreakerKey, func(next Doer) Doer {
+		return DoerFunc(func(req *http.Request) (*http.Response, error) {
+			cb := getCircuitBreaker(req.URL.String(), &cfg)
+			if err := cb.Allow(); err != nil {
+				return nil, err
+			}
+			resp, err := next.Do(req)
+			if err != nil {
+				cb.RecordFailure()
+				return nil, err
+			}
+			if resp.StatusCode >= 500 {
+				cb.RecordFailure()
+			} else {
+				cb.RecordSuccess()
+			}
+			return resp, nil
+		})
+	})
 }

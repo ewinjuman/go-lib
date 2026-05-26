@@ -245,8 +245,3 @@ func (rb *RequestBuilder) WithWriter(w logger.Writer) *RequestBuilder {
 	return rb
 }
 
-// Execute sends the HTTP request. Defined in execute.go.
-// This stub will be replaced in Task 6.
-func (rb *RequestBuilder) Execute() *Response {
-	panic("httpclient: Execute not yet implemented — ensure execute.go is compiled")
-}

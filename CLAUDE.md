@@ -139,6 +139,8 @@ Async by default — buffered channel + `WorkerPoolSize` goroutines (default 2).
 
 `MaskingPaths` → partial masking (e.g. email → `u***@***.com`, only TLD shown in domain). `RedactionPaths` → `[REDACTED]`. Both are case-insensitive and cached in a `sync.Map`. `maskMap` unwraps `reflect.Interface` before checking kind — correctly masks string values inside `map[string]interface{}`. GORM integration is in `logger/gorm_logger.go`.
 
+**`*Logger.WithContext(ctx) *ContextualLogger`** — bind a context once and log without passing `ctx` on every call. Returns a `*ContextualLogger` whose `Debug/Info/Warn/Error/Fatal` methods need no ctx argument. Equivalent to `appCtx.Log()` but works anywhere you have a `*Logger` and a `context.Context`. Internally, the previously-exported `WithContext` that returned `*zap.Logger` has been renamed `zapWithContext` (unexported) so the name is free for this public API.
+
 ### Error Package (`apperror`)
 
 `ApplicationError` carries `ErrorCode` (HTTP int), `Status` (string), `Message` (string), and an unexported `cause error`. Named `apperror` (not `error`) to avoid shadowing the Go builtin.
@@ -184,3 +186,5 @@ Async by default — buffered channel + `WorkerPoolSize` goroutines (default 2).
 - **`WithCause` returns a new instance** — it never mutates the original. Safe to call on package-level sentinel variables.
 - **`Is()` matches by `ErrorCode` + `Status` only** — `Message` is intentionally excluded so `errors.Is(NotFound("custom"), ErrNotFound)` returns `true`.
 - **`ToGRPCStatus()` is for gRPC handler returns** — call `.Err()` on the result to get the gRPC-compatible error: `return nil, ae.ToGRPCStatus().Err()`.
+- **Prefer `log.WithContext(ctx)` over passing `ctx` per call** — when multiple log statements share the same context, bind once: `clog := log.WithContext(ctx)` then use `clog.Info/Error/...`. Do not call `log.Info(ctx, ...)` in a loop with the same ctx.
+- **`zapWithContext` is unexported** — do not rename it back or expose it; its purpose is internal async-worker enrichment only. The public `WithContext` on `*Logger` returns `*ContextualLogger`, not `*zap.Logger`.

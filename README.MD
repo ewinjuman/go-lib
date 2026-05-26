@@ -78,6 +78,26 @@ log.Error(ctx, "payment failed", logger.Error(err), logger.String("order_id", "o
 log.Debug(ctx, "cache miss", logger.String("key", "product:42"))
 ```
 
+### WithContext — bind context once
+
+Use `log.WithContext(ctx)` to get a `*ContextualLogger` with the context already bound.
+Subsequent calls do **not** need to pass `ctx`:
+
+```go
+clog := logger.GetLogger().WithContext(ctx)
+
+clog.Info("user created", logger.String("user_id", "u-123"))
+clog.Warn("rate limit approaching", logger.Int("remaining", 5))
+clog.Error("payment failed", logger.Error(err))
+
+// Switch to a different context — returns a new ContextualLogger:
+reqLog := clog.WithContext(requestCtx)
+reqLog.Info("handling request")
+```
+
+This is equivalent to `appCtx.Log()` in Fiber handlers — the same `ContextualLogger` type,
+just obtained directly from a `*Logger` instead of from an `AppContext`.
+
 ### Field Helpers
 
 ```go

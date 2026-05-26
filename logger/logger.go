@@ -405,7 +405,7 @@ func (l *Logger) processLogEntry(entry LogEntry) {
   }
 
   // Get zap logger with context
-  logger := l.WithContext(entry.Context)
+  logger := l.zapWithContext(entry.Context)
 
   // Log based on level
   switch entry.Level {
@@ -450,8 +450,20 @@ func (l *Logger) Flush() {
   }
 }
 
-// WithContext menambahkan appContext ke log entry
-func (l *Logger) WithContext(ctx context.Context) *zap.Logger {
+// WithContext returns a ContextualLogger with ctx bound, so subsequent
+// Debug/Info/Warn/Error/Fatal calls do not require a context argument:
+//
+//	log := logger.GetLogger()
+//	clog := log.WithContext(ctx)
+//	clog.Info("user login", logger.String("user", userID))
+//	clog.Error("payment failed", logger.Error(err))
+func (l *Logger) WithContext(ctx context.Context) *ContextualLogger {
+	return NewContextualLogger(l, ctx)
+}
+
+// zapWithContext builds a *zap.Logger enriched with trace/request/user IDs from ctx.
+// Used internally by the async log worker.
+func (l *Logger) zapWithContext(ctx context.Context) *zap.Logger {
   var fields []zap.Field // lazy alloc: hanya alokasi jika ctx mengandung nilai
 
   // Add trace ID

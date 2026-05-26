@@ -4,7 +4,8 @@
 // Each example is a self-contained function — comment/uncomment in main() as needed.
 //
 // Public endpoints used:
-//   https://httpbin.org  — returns request metadata as JSON, great for testing
+//
+//	https://httpbin.org  — returns request metadata as JSON, great for testing
 package main
 
 import (
@@ -18,8 +19,6 @@ import (
 	"github.com/ewinjuman/go-lib/v2/httpclient"
 	"github.com/ewinjuman/go-lib/v2/logger"
 )
-
-var ctx = context.Background()
 
 func main() {
 	examplePackageLevelShortcut()
@@ -46,7 +45,8 @@ func main() {
 // default client with a 30-second timeout. No middleware by default.
 // Use these for simple one-off requests; prefer a named Client for production.
 func examplePackageLevelShortcut() {
-	log := helper.GetLogger()
+	// log.WithContext binds ctx once — no need to pass it on every call.
+	log := helper.GetLogger().WithContext(context.Background())
 
 	type Result struct {
 		URL     string            `json:"url"`
@@ -60,10 +60,10 @@ func examplePackageLevelShortcut() {
 		Execute().
 		Consume(&result)
 	if err != nil {
-		log.Error(ctx, "shortcut GET failed", logger.Error(err))
+		log.Error("shortcut GET failed", logger.Error(err))
 		return
 	}
-	log.Info(ctx, "shortcut GET", logger.String("url", result.URL))
+	log.Info("shortcut GET", logger.String("url", result.URL))
 }
 
 // ── 2. Named Client with full middleware stack ────────────────────────────────
@@ -72,7 +72,7 @@ func examplePackageLevelShortcut() {
 // Middlewares are applied in registration order — first registered = outermost.
 // Logging → Retry → CircuitBreaker is the recommended order.
 func exampleNamedClientWithMiddleware() {
-	log := helper.GetLogger()
+	log := helper.GetLogger().WithContext(context.Background())
 
 	client := httpclient.New(
 		httpclient.WithBaseURL("https://httpbin.org"),
@@ -80,7 +80,7 @@ func exampleNamedClientWithMiddleware() {
 		httpclient.WithDefaultHeaders(map[string]string{
 			"X-App-Name": "go-lib-example",
 		}),
-		httpclient.WithMiddleware(httpclient.LoggingMiddleware(log)),
+		httpclient.WithMiddleware(httpclient.LoggingMiddleware(log.Underlying())),
 		httpclient.WithMiddleware(httpclient.RetryMiddleware(httpclient.RetryConfig{
 			MaxAttempts: 3,
 			Backoff:     httpclient.ExponentialBackoff(200*time.Millisecond, 2.0),
@@ -91,7 +91,9 @@ func exampleNamedClientWithMiddleware() {
 		)),
 	)
 
-	type Result struct{ URL string `json:"url"` }
+	type Result struct {
+		URL string `json:"url"`
+	}
 	var result Result
 
 	err := client.Get("/get").
@@ -99,17 +101,17 @@ func exampleNamedClientWithMiddleware() {
 		Execute().
 		Consume(&result)
 	if err != nil {
-		log.Error(ctx, "named client GET failed", logger.Error(err))
+		log.Error("named client GET failed", logger.Error(err))
 		return
 	}
-	log.Info(ctx, "named client GET", logger.String("url", result.URL))
+	log.Info("named client GET", logger.String("url", result.URL))
 }
 
 // ── 3. JSON POST body ─────────────────────────────────────────────────────────
 //
 // WithBody encodes the value as JSON and sets Content-Type: application/json.
 func exampleJSONPost() {
-	log := helper.GetLogger()
+	log := helper.GetLogger().WithContext(context.Background())
 
 	type Payload struct {
 		UserID string `json:"user_id"`
@@ -125,10 +127,10 @@ func exampleJSONPost() {
 		Execute().
 		Consume(&result)
 	if err != nil {
-		log.Error(ctx, "JSON POST failed", logger.Error(err))
+		log.Error("JSON POST failed", logger.Error(err))
 		return
 	}
-	log.Info(ctx, "JSON POST", logger.String("user_id", result.JSON.UserID))
+	log.Info("JSON POST", logger.String("user_id", result.JSON.UserID))
 }
 
 // ── 4. Form-encoded POST ──────────────────────────────────────────────────────
@@ -136,7 +138,7 @@ func exampleJSONPost() {
 // WithForm encodes the value as application/x-www-form-urlencoded.
 // The value must be convertible to map[string]string.
 func exampleFormPost() {
-	log := helper.GetLogger()
+	log := helper.GetLogger().WithContext(context.Background())
 
 	type FormResult struct {
 		Form map[string]string `json:"form"`
@@ -148,10 +150,10 @@ func exampleFormPost() {
 		Execute().
 		Consume(&result)
 	if err != nil {
-		log.Error(ctx, "form POST failed", logger.Error(err))
+		log.Error("form POST failed", logger.Error(err))
 		return
 	}
-	log.Info(ctx, "form POST", logger.String("username", result.Form["username"]))
+	log.Info("form POST", logger.String("username", result.Form["username"]))
 }
 
 // ── 5. Multipart/form-data upload ────────────────────────────────────────────
@@ -159,7 +161,7 @@ func exampleFormPost() {
 // WithMultipart accepts Field() for text fields, FileFromReader() for in-memory
 // files, and FileFromPath() for files read from disk.
 func exampleMultipartUpload() {
-	log := helper.GetLogger()
+	log := helper.GetLogger().WithContext(context.Background())
 
 	// Simulate an in-memory file (e.g., a generated CSV).
 	csvContent := strings.NewReader("id,name\n1,alice\n2,bob")
@@ -179,10 +181,10 @@ func exampleMultipartUpload() {
 		Execute().
 		Consume(&result)
 	if err != nil {
-		log.Error(ctx, "multipart POST failed", logger.Error(err))
+		log.Error("multipart POST failed", logger.Error(err))
 		return
 	}
-	log.Info(ctx, "multipart POST",
+	log.Info("multipart POST",
 		logger.String("description", result.Form["description"]),
 		logger.String("format", result.Form["format"]),
 	)
@@ -192,7 +194,7 @@ func exampleMultipartUpload() {
 //
 // WithGraphQL is sugar that builds {"query": q, "variables": vars} as JSON.
 func exampleGraphQL() {
-	log := helper.GetLogger()
+	log := helper.GetLogger().WithContext(context.Background())
 
 	// httpbin.org/post echoes the JSON body, so we can verify the shape.
 	type Body struct {
@@ -205,10 +207,10 @@ func exampleGraphQL() {
 		Execute().
 		Consume(&result)
 	if err != nil {
-		log.Error(ctx, "GraphQL POST failed", logger.Error(err))
+		log.Error("GraphQL POST failed", logger.Error(err))
 		return
 	}
-	log.Info(ctx, "GraphQL POST", logger.Interface("query", result.JSON["query"]))
+	log.Info("GraphQL POST", logger.Interface("query", result.JSON["query"]))
 }
 
 // ── 7. Path params + query params ────────────────────────────────────────────
@@ -217,9 +219,11 @@ func exampleGraphQL() {
 // Each call to WithPathParam replaces the entire map — pass all params in one call.
 // WithQueryParams appends ?key=value to the URL.
 func examplePathAndQueryParams() {
-	log := helper.GetLogger()
+	log := helper.GetLogger().WithContext(context.Background())
 
-	type Result struct{ URL string `json:"url"` }
+	type Result struct {
+		URL string `json:"url"`
+	}
 	var result Result
 
 	// :resource is replaced → /anything/orders
@@ -229,10 +233,10 @@ func examplePathAndQueryParams() {
 		Execute().
 		Consume(&result)
 	if err != nil {
-		log.Error(ctx, "path param GET failed", logger.Error(err))
+		log.Error("path param GET failed", logger.Error(err))
 		return
 	}
-	log.Info(ctx, "path + query params", logger.String("url", result.URL))
+	log.Info("path + query params", logger.String("url", result.URL))
 }
 
 // ── 8. Bearer token auth ──────────────────────────────────────────────────────
@@ -241,7 +245,7 @@ func examplePathAndQueryParams() {
 // WithDefaultBearer on the Client accepts a func() string so tokens can rotate
 // — the function is called on every Execute().
 func exampleBearerAuth() {
-	log := helper.GetLogger()
+	log := helper.GetLogger().WithContext(context.Background())
 
 	type Result struct {
 		Headers map[string]string `json:"headers"`
@@ -253,10 +257,10 @@ func exampleBearerAuth() {
 		Execute().
 		Consume(&result)
 	if err != nil {
-		log.Error(ctx, "bearer GET failed", logger.Error(err))
+		log.Error("bearer GET failed", logger.Error(err))
 		return
 	}
-	log.Info(ctx, "bearer auth", logger.String("authorization", result.Headers["Authorization"]))
+	log.Info("bearer auth", logger.String("authorization", result.Headers["Authorization"]))
 }
 
 // ── 9. Basic auth ─────────────────────────────────────────────────────────────
@@ -264,7 +268,7 @@ func exampleBearerAuth() {
 // WithBasicAuth encodes user:pass in Base64 and sets Authorization: Basic <…>.
 // WithDefaultBasicAuth on the Client applies it to every request.
 func exampleBasicAuth() {
-	log := helper.GetLogger()
+	log := helper.GetLogger().WithContext(context.Background())
 
 	type Result struct {
 		Authenticated bool   `json:"authenticated"`
@@ -277,10 +281,10 @@ func exampleBasicAuth() {
 		Execute().
 		Consume(&result)
 	if err != nil {
-		log.Error(ctx, "basic auth GET failed", logger.Error(err))
+		log.Error("basic auth GET failed", logger.Error(err))
 		return
 	}
-	log.Info(ctx, "basic auth",
+	log.Info("basic auth",
 		logger.String("user", result.User),
 		logger.Bool("authenticated", result.Authenticated),
 	)
@@ -291,16 +295,16 @@ func exampleBasicAuth() {
 // Response.Headers (http.Header) is always populated on non-streaming requests.
 // Use resp.Raw() to access the underlying *http.Response for advanced use cases.
 func exampleResponseHeaders() {
-	log := helper.GetLogger()
+	log := helper.GetLogger().WithContext(context.Background())
 
 	resp := httpclient.Get("https://httpbin.org/response-headers").
 		WithQueryParams(map[string]string{"X-Custom-Header": "hello"}).
 		Execute()
 	if resp.Error != nil {
-		log.Error(ctx, "response headers failed", logger.Error(resp.Error))
+		log.Error("response headers failed", logger.Error(resp.Error))
 		return
 	}
-	log.Info(ctx, "response headers",
+	log.Info("response headers",
 		logger.Int("status", resp.HttpCode()),
 		logger.String("content-type", resp.Headers.Get("Content-Type")),
 		logger.String("x-custom-header", resp.Headers.Get("X-Custom-Header")),
@@ -312,7 +316,7 @@ func exampleResponseHeaders() {
 // By default only 200 is considered success. WithSuccessCodes overrides this.
 // IsSuccess(), IsError(), and Consume() all use the same codes — no divergence.
 func exampleWithSuccessCodes() {
-	log := helper.GetLogger()
+	log := helper.GetLogger().WithContext(context.Background())
 
 	resp := httpclient.Post("https://httpbin.org/status/201").
 		WithBody(map[string]string{"note": "created"}).
@@ -320,7 +324,7 @@ func exampleWithSuccessCodes() {
 		Execute()
 
 	isErr, _ := resp.IsError()
-	log.Info(ctx, "custom success codes",
+	log.Info("custom success codes",
 		logger.Int("status", resp.HttpCode()),
 		logger.Bool("is_success", resp.IsSuccess()),
 		logger.Bool("is_error", isErr),
@@ -333,12 +337,12 @@ func exampleWithSuccessCodes() {
 // After Execute(), Response.Body is nil — never call Consume() or SaveToFile()
 // on the same response.
 func exampleStreamingDownload() {
-	log := helper.GetLogger()
+	log := helper.GetLogger().WithContext(context.Background())
 
 	// Stream directly to a temp file.
 	f, err := os.CreateTemp("", "download-*.bin")
 	if err != nil {
-		log.Error(ctx, "create temp file failed", logger.Error(err))
+		log.Error("create temp file failed", logger.Error(err))
 		return
 	}
 	defer os.Remove(f.Name())
@@ -348,11 +352,11 @@ func exampleStreamingDownload() {
 		WithOutput(f).
 		Execute()
 	if resp.Error != nil {
-		log.Error(ctx, "streaming download failed", logger.Error(resp.Error))
+		log.Error("streaming download failed", logger.Error(resp.Error))
 		return
 	}
 	info, _ := f.Stat()
-	log.Info(ctx, "streaming download",
+	log.Info("streaming download",
 		logger.String("file", f.Name()),
 		logger.Int64("bytes", info.Size()),
 	)
@@ -363,7 +367,7 @@ func exampleStreamingDownload() {
 // WithContext sets the request context. Cancellation or timeout propagates
 // through the middleware stack and into the underlying http.Client.
 func exampleContextCancellation() {
-	log := helper.GetLogger()
+	log := helper.GetLogger().WithContext(context.Background())
 
 	// Short timeout — /delay/2 sleeps 2 seconds, we cancel after 500ms.
 	reqCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
@@ -373,11 +377,11 @@ func exampleContextCancellation() {
 		WithContext(reqCtx).
 		Execute()
 	if resp.Error != nil {
-		log.Info(ctx, "context cancellation: request cancelled as expected",
+		log.Info("context cancellation: request cancelled as expected",
 			logger.String("error", resp.Error.Error()))
 		return
 	}
-	log.Warn(ctx, "expected cancellation but request succeeded")
+	log.Warn("expected cancellation but request succeeded")
 }
 
 // ── 14. Retry middleware ──────────────────────────────────────────────────────
@@ -393,7 +397,7 @@ func exampleContextCancellation() {
 //   - ExponentialWithJitter(base, multiplier): exponential + random jitter
 //     (preferred in production — avoids thundering herd on simultaneous retries)
 func exampleRetryMiddleware() {
-	log := helper.GetLogger()
+	log := helper.GetLogger().WithContext(context.Background())
 
 	// Client that retries up to 3 times on 429 or 5xx,
 	// with exponential backoff + jitter starting at 100ms.
@@ -407,16 +411,18 @@ func exampleRetryMiddleware() {
 		})),
 	)
 
-	type Result struct{ Origin string `json:"origin"` }
+	type Result struct {
+		Origin string `json:"origin"`
+	}
 	var result Result
 
 	// /get always returns 200, so only 1 attempt is made.
 	err := client.Get("/get").Execute().Consume(&result)
 	if err != nil {
-		log.Error(ctx, "retry example failed", logger.Error(err))
+		log.Error("retry example failed", logger.Error(err))
 		return
 	}
-	log.Info(ctx, "retry middleware: succeeded", logger.String("origin", result.Origin))
+	log.Info("retry middleware: succeeded", logger.String("origin", result.Origin))
 }
 
 // ── 15. Circuit breaker ───────────────────────────────────────────────────────
@@ -426,9 +432,10 @@ func exampleRetryMiddleware() {
 // created the request.
 //
 // State machine:
-//   CLOSED → OPEN (after FailureThreshold failures)
-//          → HALF_OPEN (after RecoveryTimeout)
-//          → CLOSED (on first success in HALF_OPEN)
+//
+//	CLOSED → OPEN (after FailureThreshold failures)
+//	       → HALF_OPEN (after RecoveryTimeout)
+//	       → CLOSED (on first success in HALF_OPEN)
 //
 // 5xx responses and transport errors count as failures.
 // 4xx and 2xx responses count as successes.
@@ -436,7 +443,7 @@ func exampleRetryMiddleware() {
 // Use WithoutMiddleware(CircuitBreakerKey) to skip the CB for a specific request
 // (e.g., a health-check probe that must always go through).
 func exampleCircuitBreaker() {
-	log := helper.GetLogger()
+	log := helper.GetLogger().WithContext(context.Background())
 
 	client := httpclient.New(
 		httpclient.WithBaseURL("https://httpbin.org"),
@@ -448,16 +455,18 @@ func exampleCircuitBreaker() {
 		)),
 	)
 
-	type Result struct{ URL string `json:"url"` }
+	type Result struct {
+		URL string `json:"url"`
+	}
 
 	// Normal request — goes through the circuit breaker.
 	var result Result
 	err := client.Get("/get").Execute().Consume(&result)
 	if err != nil {
-		log.Error(ctx, "circuit breaker normal request failed", logger.Error(err))
+		log.Error("circuit breaker normal request failed", logger.Error(err))
 		return
 	}
-	log.Info(ctx, "circuit breaker: normal request", logger.String("url", result.URL))
+	log.Info("circuit breaker: normal request", logger.String("url", result.URL))
 
 	// Health check that bypasses the circuit breaker entirely.
 	var health Result
@@ -466,10 +475,10 @@ func exampleCircuitBreaker() {
 		Execute().
 		Consume(&health)
 	if err != nil {
-		log.Error(ctx, "circuit breaker health check failed", logger.Error(err))
+		log.Error("circuit breaker health check failed", logger.Error(err))
 		return
 	}
-	log.Info(ctx, "circuit breaker: health check bypassed CB", logger.String("url", health.URL))
+	log.Info("circuit breaker: health check bypassed CB", logger.String("url", health.URL))
 }
 
 // ── 16. Server-Sent Events (SSE) ─────────────────────────────────────────────
@@ -484,7 +493,7 @@ func exampleCircuitBreaker() {
 //   - ID:    last-event-ID hint for client reconnection
 //   - Retry: server reconnection hint in milliseconds
 func exampleSSE() {
-	log := helper.GetLogger()
+	log := helper.GetLogger().WithContext(context.Background())
 
 	// Use a timeout context so the example doesn't block forever.
 	sseCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -497,7 +506,7 @@ func exampleSSE() {
 		WithContext(sseCtx).
 		ExecuteSSE(func(e httpclient.SSEEvent) error {
 			count++
-			log.Info(ctx, "SSE event received",
+			log.Info("SSE event received",
 				logger.Int("n", count),
 				logger.String("event", e.Event),
 				logger.String("data", e.Data),
@@ -512,8 +521,8 @@ func exampleSSE() {
 
 	// A stop error from our own callback is expected — don't treat it as failure.
 	if err != nil && count < maxEvents {
-		log.Error(ctx, "SSE stream error", logger.Error(err))
+		log.Error("SSE stream error", logger.Error(err))
 		return
 	}
-	log.Info(ctx, "SSE complete", logger.Int("events_received", count))
+	log.Info("SSE complete", logger.Int("events_received", count))
 }

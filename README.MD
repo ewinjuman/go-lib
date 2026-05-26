@@ -21,8 +21,7 @@ go get github.com/ewinjuman/go-lib/v2
 |---|---|
 | [`logger`](#logger) | Structured async logging with masking and file rotation |
 | [`appContext`](#appcontext) | Request-scoped context for distributed tracing |
-| [`httpclient`](#http-client) | Fluent HTTP client (resty) with circuit breaker |
-| [`httpstd`](#http-client) | Same API as `httpclient` but uses stdlib `net/http` |
+| [`httpclient`](#http-client) | Fluent HTTP client (stdlib) with middleware, circuit breaker, retry |
 | [`grpc`](#grpc-client) | gRPC client with automatic context and metadata |
 | [`apperror`](#error-handling) | Standardized error types with HTTP/gRPC code mapping |
 | [`password`](#password) | Bcrypt password hashing and comparison |
@@ -331,14 +330,37 @@ appCtx.Duration() // time.Duration
 
 ## HTTP Client
 
-Fluent HTTP client with automatic logging and circuit breaker. Two implementations share an identical API:
+Fluent HTTP client backed by stdlib `net/http` — no external HTTP library dependencies. Supports a middleware pipeline (logging, retry, circuit breaker) via a composable `Doer` interface.
 
-- `github.com/ewinjuman/go-lib/v2/httpclient` — backed by [resty](https://github.com/go-resty/resty)
-- `github.com/ewinjuman/go-lib/v2/httpstd` — backed by stdlib `net/http` (generally faster under high concurrency)
-
-### Basic Usage
+### Creating a Client
 
 ```go
+import "github.com/ewinjuman/go-lib/v2/httpclient"
+
+// Client with middleware pipeline
+client := httpclient.New(
+    httpclient.WithBaseURL("https://api.example.com"),
+    httpclient.WithDefaultTimeout(10 * time.Second),
+    httpclient.WithMiddleware(httpclient.LoggingMiddleware(log)),
+    httpclient.WithMiddleware(httpclient.RetryMiddleware(httpclient.RetryConfig{
+        MaxAttempts: 3,
+        Backoff:     httpclient.ExponentialBackoff(200*time.Millisecond, 2.0),
+        RetryOn:     httpclient.RetryOnAny,
+    })),
+    httpclient.WithMiddleware(httpclient.CircuitBreakerMiddleware(httpclient.CircuitBreakerConfig{})),
+)
+
+var result MyResponse
+err := client.Get("/users").
+    WithQueryParam(map[string]string{"page": "1", "limit": "20"}).
+    Execute().
+    Consume(&result)
+```
+
+### Package-Level Shortcuts (Backward Compatible)
+
+```go
+// Package-level functions use a global client with no middleware
 import "github.com/ewinjuman/go-lib/v2/httpclient"
 
 // GET

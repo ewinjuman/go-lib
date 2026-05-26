@@ -20,7 +20,7 @@ go test ./appContext/...
 # Run a single test by name
 go test -run TestRequest_DoRequest ./httpclient/...
 
-# Run benchmarks (httpclient vs httpstd comparison)
+# Run benchmarks
 go test -run=^$ -bench=. -benchmem -benchtime=3s ./bench/...
 ```
 
@@ -35,14 +35,13 @@ go test -run=^$ -bench=. -benchmem -benchtime=3s ./bench/...
 |---------|------|
 | `logger` | Structured async logger (zap-backed) with masking, redaction, file rotation, GORM integration |
 | `appContext` | Request-scoped context carrier — propagates trace ID, user ID, IP, method across service layers |
-| `httpclient` | Fluent HTTP client using [resty](https://github.com/go-resty/resty) |
-| `httpstd` | Clone of `httpclient` using stdlib `net/http` — identical public API, generally faster under high concurrency |
+| `httpclient` | Fluent HTTP client (stdlib only — no external HTTP library dependencies) |
 | `apperror` | `ApplicationError` type bridging HTTP status codes and gRPC codes |
 | `grpc` | gRPC client wrapper with context/metadata propagation |
 | `constant` | Context key constants shared across packages |
 | `password` | bcrypt hashing helpers |
 | `utils` | String helpers, retry, struct conversion, code generation |
-| `bench` | Benchmark tests comparing `httpclient` (resty) vs `httpstd` (net/http) |
+| `bench` | Benchmark tests for `httpclient` |
 | `examples` | Runnable usage examples (not production code) |
 
 ### AppContext
@@ -84,28 +83,47 @@ appCtx.Log().Error("msg", logger.Error(err))
 
 `ContextualLogger` (`logger/contextual.go`) wraps `*Logger` + `context.Context` and proxies all log methods (Debug/Info/Warn/Error/Fatal) and utility methods (LogRequestHttp, LogResponseHttp, LogRequestGrpc, LogResponseGrpc, etc.) without requiring a ctx argument. Use `.Underlying()` to access the raw `*Logger` if needed.
 
-### HTTP Client Design (`httpclient` and `httpstd`)
+### HTTP Client Design (`httpclient`)
 
-Both packages expose an identical fluent API:
+Single package `httpclient` (stdlib only — no resty or other HTTP library dependencies).
 
+**Core pattern:**
 ```go
-httpclient.Post("https://api.example.com/users").
-    WithBody(payload).
-    WithRequestID("abc").
-    WithTimeout(5 * time.Second).
-    Execute().
-    Consume(&result)
+client := httpclient.New(
+    httpclient.WithBaseURL("https://api.example.com"),
+    httpclient.WithDefaultTimeout(10 * time.Second),
+    httpclient.WithMiddleware(httpclient.LoggingMiddleware(log)),
+    httpclient.WithMiddleware(httpclient.RetryMiddleware(httpclient.RetryConfig{
+        MaxAttempts: 3, Backoff: httpclient.ExponentialBackoff(200*time.Millisecond, 2.0),
+        RetryOn: httpclient.RetryOnAny,
+    })),
+    httpclient.WithMiddleware(httpclient.CircuitBreakerMiddleware(httpclient.CircuitBreakerConfig{})),
+)
+
+var result MyStruct
+err := client.Post("/users").WithBody(payload).WithBearer(token).Execute().Consume(&result)
 ```
 
-**Builder flow:** `Post(url)` → `*RequestBuilder` → chain `With*` → `Execute()` → `*Response` → `Consume(&v)` / `IsSuccess()` / `IsError()` / `SaveToFile(path)`.
+**Middleware chain:** `Doer` interface + `Middleware` type. `Apply(base, middlewares, skip)` composes right-to-left; first middleware registered is outermost. Retry, circuit breaker, logging are all middleware — not flags on the request struct.
 
-**File download:** `SaveToFile(path)` writes the buffered `Response.Body` to disk (small files). `WithOutput(w io.Writer)` streams directly to any writer without buffering — `Response.Body` is `nil` after streaming; never call `Consume` or `SaveToFile` on the same response. `httpclient` uses `SetDoNotParseResponse(true)` + `RawResponse.Body` for true streaming; `httpstd` uses `io.Copy` directly from `resp.Body`.
+**Package-level shortcuts** (backward-compatible, use global client with no middleware):
+```go
+httpclient.Post("https://api.example.com/users").WithBody(x).Execute()
+```
 
-**Circuit breaker** is on by default, global per-host (keyed by `scheme://host` in a `sync.Map`). Config is applied only on first request to a host — subsequent requests reuse the same CB. Use `.WithoutCircuitBreaker()` or `.WithCircuitBreakerConfig(cfg)` as needed.
+**Request types:** JSON (default `WithBody`), form (`WithForm`), multipart (`WithMultipart`), raw bytes (`WithRawBody`), GraphQL sugar (`WithGraphQL`).
 
-**Success codes**: defaults to `[200]`. `Response.SuccessCodes` is set at the start of `doRequest` so `IsSuccess()`, `IsError()`, and `Consume()` all use the same source — no divergence.
+**SSE:** `ExecuteSSE(func(SSEEvent) error)` reads `text/event-stream` via `bufio.Scanner`.
 
-**`httpclient` vs `httpstd`**: `httpstd` uses a `sync.Pool` for `bytes.Buffer` in JSON encoding and is generally faster on parallel benchmarks. Any change to the public API, circuit breaker logic, or response handling **must be mirrored in both packages**.
+**Streaming download:** `WithOutput(w io.Writer)` — `Response.Body` is nil after streaming; never call `Consume` or `SaveToFile` on the same response.
+
+**Response headers:** `resp.Headers http.Header` — always populated on non-streaming responses.
+
+**Per-request middleware skip:** `WithoutMiddleware(CircuitBreakerKey)` rebuilds stack without that middleware.
+
+**`WithQueryParam`** is kept as an alias for `WithQueryParams` (backward compat).
+
+**CB state is global per host** (`sync.Map` keyed by `scheme://host`) — same logic as before, now as middleware.
 
 ### Logger
 
@@ -147,7 +165,6 @@ Async by default — buffered channel + `WorkerPoolSize` goroutines (default 2).
 
 ### Key Design Rules
 
-- **`httpclient` and `httpstd` are kept in sync** — mirror all API and logic changes in both packages.
 - **Circuit breaker state is global per host**, not per `RequestBuilder`. A new builder per request is fine.
 - **`AppContext.New()` takes `ctx` first** — always pass the request context (e.g. `c.UserContext()` in Fiber) so deadlines propagate into `ToContext()`.
 - **`Log()` returns `*ContextualLogger`**, not `*Logger` — do not bypass it by calling `ac.Log().Underlying().Info(ctx, ...)` unless raw zap access is truly needed.

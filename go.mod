@@ -3,7 +3,6 @@ module github.com/ewinjuman/go-lib/v2
 go 1.25.0
 
 require (
-	github.com/go-resty/resty/v2 v2.11.0
 	github.com/gofiber/fiber/v2 v2.52.12-0.20260206174030-5494de86f38e
 	github.com/google/uuid v1.6.0
 	github.com/pkg/errors v0.9.1

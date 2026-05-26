@@ -7,8 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	httplib "github.com/ewinjuman/go-lib/v2/httpclient"
-	"github.com/ewinjuman/go-lib/v2/httpstd"
+	httpclient "github.com/ewinjuman/go-lib/v2/httpclient"
 )
 
 //run: go test -run=^$ -bench=. -benchmem -benchtime=3s ./bench/...
@@ -45,23 +44,13 @@ func newTestServer() *httptest.Server {
 // GET benchmarks
 // ──────────────────────────────────────────────
 
-func BenchmarkResty_GET(b *testing.B) {
+func BenchmarkHTTPClient_GET(b *testing.B) {
 	srv := newTestServer()
 	defer srv.Close()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = httplib.Get(srv.URL + "/get").Execute()
-	}
-}
-
-func BenchmarkNetHTTP_GET(b *testing.B) {
-	srv := newTestServer()
-	defer srv.Close()
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = httpstd.Get(srv.URL + "/get").Execute()
+		_ = httpclient.Get(srv.URL + "/get").Execute()
 	}
 }
 
@@ -69,25 +58,14 @@ func BenchmarkNetHTTP_GET(b *testing.B) {
 // POST benchmarks
 // ──────────────────────────────────────────────
 
-func BenchmarkResty_POST(b *testing.B) {
+func BenchmarkHTTPClient_POST(b *testing.B) {
 	srv := newTestServer()
 	defer srv.Close()
 	payload := testPayload{Name: "benchmark", Value: 42}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = httplib.Post(srv.URL + "/post").WithBody(payload).Execute()
-	}
-}
-
-func BenchmarkNetHTTP_POST(b *testing.B) {
-	srv := newTestServer()
-	defer srv.Close()
-	payload := testPayload{Name: "benchmark", Value: 42}
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = httpstd.Post(srv.URL + "/post").WithBody(payload).Execute()
+		_ = httpclient.Post(srv.URL + "/post").WithBody(payload).Execute()
 	}
 }
 
@@ -95,31 +73,19 @@ func BenchmarkNetHTTP_POST(b *testing.B) {
 // Parallel benchmarks (concurrent requests)
 // ──────────────────────────────────────────────
 
-func BenchmarkResty_GET_Parallel(b *testing.B) {
+func BenchmarkHTTPClient_GET_Parallel(b *testing.B) {
 	srv := newTestServer()
 	defer srv.Close()
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_ = httplib.Get(srv.URL + "/get").Execute()
+			_ = httpclient.Get(srv.URL + "/get").Execute()
 		}
 	})
 }
 
-func BenchmarkNetHTTP_GET_Parallel(b *testing.B) {
-	srv := newTestServer()
-	defer srv.Close()
-
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			_ = httpstd.Get(srv.URL + "/get").Execute()
-		}
-	})
-}
-
-func BenchmarkResty_POST_Parallel(b *testing.B) {
+func BenchmarkHTTPClient_POST_Parallel(b *testing.B) {
 	srv := newTestServer()
 	defer srv.Close()
 	payload := testPayload{Name: "benchmark", Value: 42}
@@ -127,20 +93,7 @@ func BenchmarkResty_POST_Parallel(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_ = httplib.Post(srv.URL + "/post").WithBody(payload).Execute()
-		}
-	})
-}
-
-func BenchmarkNetHTTP_POST_Parallel(b *testing.B) {
-	srv := newTestServer()
-	defer srv.Close()
-	payload := testPayload{Name: "benchmark", Value: 42}
-
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			_ = httpstd.Post(srv.URL + "/post").WithBody(payload).Execute()
+			_ = httpclient.Post(srv.URL + "/post").WithBody(payload).Execute()
 		}
 	})
 }

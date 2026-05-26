@@ -93,7 +93,7 @@ func WithCookieJar(jar http.CookieJar) ClientOption {
 
 // WithSkipTLS disables TLS certificate verification for all requests from this client.
 // Use only in development/testing — never in production.
-// Composable with WithProxy and WithTLSConfig (last one wins if both set TLS).
+// When combined with WithTLSConfig, WithSkipTLS takes precedence regardless of option order.
 func WithSkipTLS() ClientOption {
 	return func(c *Client) { c.skipTLS = true }
 }

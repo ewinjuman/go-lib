@@ -3,7 +3,9 @@ package httpclient
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/ewinjuman/go-lib/v2/logger"
@@ -105,10 +107,10 @@ type spyWriter struct {
 
 type spyCall struct {
 	message string
-	values  []interface{}
+	values  []any
 }
 
-func (s *spyWriter) Print(ctx context.Context, message string, value ...interface{}) {
+func (s *spyWriter) Print(ctx context.Context, message string, value ...any) {
 	s.calls = append(s.calls, spyCall{message: message, values: value})
 }
 
@@ -162,4 +164,42 @@ func TestLoggingMiddleware_logsOnError(t *testing.T) {
 	require.GreaterOrEqual(t, len(spy.calls), 2, "expected at least 2 Print calls on error path")
 	assert.Equal(t, "http_request", spy.calls[0].message)
 	assert.Equal(t, "http_response", spy.calls[1].message)
+}
+
+// trackingCloser wraps an io.ReadCloser and records whether Close was called.
+type trackingCloser struct {
+	io.ReadCloser
+	closed *bool
+}
+
+func (tc *trackingCloser) Close() error {
+	*tc.closed = true
+	return tc.ReadCloser.Close()
+}
+
+// TestLoggingMiddleware_closesBodyOnNonNilRespAndError verifies the net/http contract:
+// when next.Do returns (non-nil resp, non-nil err), LoggingMiddleware closes resp.Body
+// to prevent a resource leak before discarding the response.
+func TestLoggingMiddleware_closesBodyOnNonNilRespAndError(t *testing.T) {
+	spy := &spyWriter{}
+	mw := LoggingMiddleware(spy)
+
+	closed := false
+	trackingBody := &trackingCloser{
+		ReadCloser: io.NopCloser(strings.NewReader("partial body")),
+		closed:     &closed,
+	}
+
+	sentinelErr := errors.New("redirect error")
+	errDoer := DoerFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 301, Body: trackingBody}, sentinelErr
+	})
+
+	composed := Apply(errDoer, []Middleware{mw}, nil)
+	req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
+	require.NoError(t, err)
+
+	_, err = composed.Do(req)
+	assert.ErrorIs(t, err, sentinelErr)
+	assert.True(t, closed, "resp.Body must be closed to prevent resource leak")
 }

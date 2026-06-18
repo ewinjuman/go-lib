@@ -17,6 +17,13 @@ func NewContextualLogger(l *Logger, ctx context.Context) *ContextualLogger {
 	return &ContextualLogger{logger: l, ctx: ctx}
 }
 
+// Ctx returns a ContextualLogger using the global singleton logger bound to ctx.
+// Request metadata (request_id, trace_id, user_id) is extracted from ctx
+// automatically — no AppContext import needed.
+func Ctx(ctx context.Context) *ContextualLogger {
+	return GetLogger().WithContext(ctx)
+}
+
 // WithContext returns a new ContextualLogger with a different context.
 func (c *ContextualLogger) WithContext(ctx context.Context) *ContextualLogger {
 	return &ContextualLogger{logger: c.logger, ctx: ctx}

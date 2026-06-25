@@ -16,7 +16,6 @@ import (
 
   "github.com/ewinjuman/go-lib/v2/constant"
   "github.com/ewinjuman/go-lib/v2/utils"
-  "github.com/gofiber/fiber/v2/log"
   "github.com/google/uuid"
   "go.uber.org/zap"
   "go.uber.org/zap/zapcore"
@@ -76,41 +75,77 @@ func composeHeaders(hdrs http.Header) string {
   return strings.Join(str, "\n")
 }
 
-// if message == "http_request" ==> [0] = http Method, [1] = url, [2] = request body, [3] = http.Header, [4] = query param
-// if message == "http_response" ==> [0] = http Method, [1] = url, [2] = response.StatusCode, [3] = response.Body, [4] = resultRequest.Header, [5] =  response Time, [6] = error
+// http_request:  [0]=method, [1]=url, [2]=body, [3]=http.Header, [4]=queryParams
+// http_response: [0]=method, [1]=url, [2]=statusCode, [3]=body, [4]=http.Header, [5]=duration, [6]=error
 func (w *DefaultWriter) Print(ctx context.Context, message string, value ...interface{}) {
-  if len(value) < 2 {
-    return
-  }
+  l := GetLogger()
 
-  if message == "http_request" {
-    var jsonRequest interface{}
-    if value[2] != nil {
-      js, _ := json.Marshal(value[2])
-      jsonRequest = string(js)
+  switch message {
+  case "http_request":
+    if len(value) < 4 {
+      return
     }
-    reqLog := "\n==============================================================================\n" +
-      "**** REQUEST ****\n" +
-      fmt.Sprintf("%s\n", value[0]) +
-      fmt.Sprintf("URL    : %s\n", value[1]) +
-      fmt.Sprintf("HEADERS:\n%s\n", composeHeaders(value[3].(http.Header))) +
-      fmt.Sprintf("BODY   :\n%v\n", jsonRequest) +
-      "------------------------------------------------------------------------------\n"
-    log.Debug(reqLog)
-  } else if message == "http_response" {
-    var jsonResponse interface{}
-    if value[3] != nil {
-      js, _ := json.Marshal(value[3])
-      jsonResponse = string(js)
+    method, _ := value[0].(string)
+    url, _ := value[1].(string)
+    headers := safeHeaders(value[3])
+
+    fields := []Field{
+      String("method", method),
+      String("url", url),
+      String("headers", composeHeaders(headers)),
+      String("body", formatBody(value[2])),
     }
-    debugLog := "\n**** RESPONSE ****\n" +
-      fmt.Sprintf("STATUS       : %v\n", value[2].(int)) +
-      fmt.Sprintf("TIME DURATION: %v\n", value[5]) +
-      "HEADERS      :\n" +
-      composeHeaders(value[4].(http.Header)) + "\n" +
-      fmt.Sprintf("BODY         :\n%v\n", jsonResponse)
-    log.Debug(debugLog)
+    if len(value) > 4 {
+      fields = append(fields, String("query_params", formatBody(value[4])))
+    }
+    l.Debug(ctx, "http_request", fields...)
+
+  case "http_response":
+    if len(value) < 6 {
+      return
+    }
+    method, _ := value[0].(string)
+    url, _ := value[1].(string)
+    statusCode, _ := value[2].(int)
+    headers := safeHeaders(value[4])
+    duration, _ := value[5].(time.Duration)
+
+    fields := []Field{
+      String("method", method),
+      String("url", url),
+      Int("status_code", statusCode),
+      String("headers", composeHeaders(headers)),
+      String("body", formatBody(value[3])),
+      Duration("duration", duration),
+    }
+    if len(value) > 6 && value[6] != nil {
+      if e, ok := value[6].(error); ok {
+        fields = append(fields, Error(e))
+      }
+    }
+    l.Debug(ctx, "http_response", fields...)
   }
+}
+
+func formatBody(v interface{}) string {
+  if v == nil {
+    return ""
+  }
+  if s, ok := v.(string); ok {
+    return s
+  }
+  js, err := json.Marshal(v)
+  if err != nil {
+    return fmt.Sprintf("%v", v)
+  }
+  return string(js)
+}
+
+func safeHeaders(v interface{}) http.Header {
+  if h, ok := v.(http.Header); ok {
+    return h
+  }
+  return http.Header{}
 }
 
 // Options untuk konfigurasi logger

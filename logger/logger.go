@@ -98,7 +98,7 @@ func (w *DefaultWriter) Print(ctx context.Context, message string, value ...inte
     if len(value) > 4 {
       fields = append(fields, String("query_params", formatBody(value[4])))
     }
-    l.Debug(ctx, "http_request", fields...)
+    l.Info(ctx, "http_request", fields...)
 
   case "http_response":
     if len(value) < 6 {
@@ -123,7 +123,7 @@ func (w *DefaultWriter) Print(ctx context.Context, message string, value ...inte
         fields = append(fields, Error(e))
       }
     }
-    l.Debug(ctx, "http_response", fields...)
+    l.Info(ctx, "http_response", fields...)
   }
 }
 

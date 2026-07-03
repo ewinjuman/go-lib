@@ -12,7 +12,10 @@ import (
 )
 
 type Options struct {
-	Address string        `json:"address"`
+	// Address is the target gRPC server address (host:port).
+	Address string `json:"address"`
+	// Timeout is the RPC context deadline, used as-is in CreateContext
+	// (e.g. Timeout: 5*time.Second) — not a bare count of seconds.
 	Timeout time.Duration `json:"timeout"`
 }
 
@@ -22,7 +25,7 @@ type RpcConnection struct {
 }
 
 func (rpc *RpcConnection) CreateContext(parent context.Context, appCtx *appContext.AppContext) (ctx context.Context, cancel context.CancelFunc) {
-	ctx, cancel = context.WithTimeout(parent, rpc.options.Timeout*time.Second)
+	ctx, cancel = context.WithTimeout(parent, rpc.options.Timeout)
 	ctx = context.WithValue(ctx, constant.AppContextKey, appCtx)
 	md := metadata.New(map[string]string{"Request-Id": appCtx.GetRequestID()})
 	ctx = metadata.NewOutgoingContext(ctx, md)

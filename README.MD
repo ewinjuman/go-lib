@@ -24,6 +24,8 @@ go get github.com/ewinjuman/go-lib/v2
 | [`httpclient`](#http-client) | Fluent HTTP client (stdlib) with middleware, circuit breaker, retry |
 | [`grpc`](#grpc-client) | gRPC client with automatic context and metadata |
 | [`apperror`](#error-handling) | Standardized error types with HTTP/gRPC code mapping |
+| [`cache`](#cache) | Redis client (standalone/Sentinel/Cluster), typed `Store[T]`, stampede-protected `ObjectCache[T]`, distributed `Lock` |
+| [`database`](#database) | GORM connection factory for MySQL/PostgreSQL, wired with `logger` |
 | [`password`](#password) | Bcrypt password hashing and comparison |
 | [`constant`](#constant) | Context key constants for request propagation |
 | [`utils`](#utils) | General utilities: conversion, retry, code generation |
@@ -689,6 +691,114 @@ func (e *ApplicationError) WithCause(err error) *ApplicationError // returns new
 func (e *ApplicationError) Is(target error) bool                // matches by ErrorCode + Status
 func (e *ApplicationError) ToGRPCStatus() *status.Status        // convert to gRPC status
 ```
+
+---
+
+## Cache
+
+Generic Redis caching toolkit: a `RedisClient` wrapper that works identically over a standalone, Sentinel, or Cluster connection; a typed `Store[T]`; a stampede-protected `ObjectCache[T]`; and a distributed `Lock`.
+
+```go
+import "github.com/ewinjuman/go-lib/v2/cache"
+
+client, err := cache.NewRedisClient(cache.RedisOption{
+    Address:  "localhost:6379", // single node
+    Password: "",
+    Database: 0,
+    PoolSize: 10,
+})
+
+// Or wrap an already-connected redis.UniversalClient instead of dialing a new one:
+client := cache.WrapRedisClient(existingUniversalClient)
+```
+
+### Standalone, Sentinel, or Cluster
+
+The concrete client type is selected from `RedisOption` — no separate constructors needed:
+
+```go
+type RedisOption struct {
+    Address       string        // single host:port
+    Addresses     []string      // cluster/sentinel seed nodes (takes precedence over Address)
+    Username      string
+    Password      string
+    Database      int           // ignored in cluster mode
+    PoolSize      int
+    MasterName    string        // set to enable Sentinel-backed failover
+    IsClusterMode bool          // force cluster mode with a single address (e.g. AWS ElastiCache)
+    MaxRetries    int           // 0 = go-redis default (3); -1 disables retries
+    DialTimeout   time.Duration // 0 = go-redis default (5s)
+    ReadTimeout   time.Duration // 0 = go-redis default (3s)
+    WriteTimeout  time.Duration // 0 = go-redis default (3s)
+}
+```
+
+- `len(Addresses) > 1` or `IsClusterMode: true` → cluster client
+- `MasterName` set → Sentinel-backed failover client
+- otherwise → standalone client
+
+`RedisClient` methods: `Get`, `Set`, `Delete`, `SetNX`, `Pipeline`, `Reset` (FlushAll), `Close`, `IsAlive`, `GetClient() redis.UniversalClient`, `TryLock`.
+
+### Typed Store
+
+```go
+store := cache.NewStore[User](client, 10*time.Minute)
+_ = store.Set(ctx, "user:123", &user)
+got, err := store.Get(ctx, "user:123")
+```
+
+### Object Cache (stampede-protected)
+
+```go
+oc := cache.NewObjectCache[User](client, cache.ObjectCacheConfig{
+    TTL:    10 * time.Minute,
+    Policy: cache.PolicyAll(), // or PolicyNone(), PolicyKeys(...), PolicyFunc(...)
+})
+
+user, err := oc.GetOrLoad(ctx, "user:123", func() (*User, error) {
+    return repo.FindUser(ctx, 123) // called at most once across concurrent callers
+})
+```
+
+Concurrent cache misses for the same key are coalesced two ways: an in-process `singleflight.Group` first, then a Redis distributed lock across pods. Callers that lose the lock poll the cache for up to `LockWait` before falling back to a direct (uncached) load — never blocking indefinitely.
+
+### Distributed Lock
+
+```go
+lock, ok, err := client.TryLock(ctx, "job:daily-report", 30*time.Second)
+if ok {
+    defer lock.Unlock(ctx)
+    // do work
+}
+```
+
+`Unlock` only releases the lock if the caller still holds it (token-based Lua check-and-delete), so an expired lock reacquired by someone else is never released out from under them.
+
+---
+
+## Database
+
+GORM connection factory for MySQL or PostgreSQL, wired with `logger` for query logging.
+
+```go
+import "github.com/ewinjuman/go-lib/v2/database"
+
+db, err := database.NewConnection(database.Option{
+    DbType:      "postgres", // or "mysql"; empty defaults to postgres
+    Host:        "localhost",
+    Port:        5432,
+    Username:    "user",
+    Password:    "secret",
+    Schema:      "app_db",
+    MaxIdleConn: 10,
+    MaxOpenConn: 100,
+    LogMode:     true, // routes GORM query logs through the given *logger.Logger
+    SslMode:     false,
+    Timezone:    "Asia/Jakarta", // defaults to Asia/Jakarta when empty
+}, log)
+```
+
+`logger` may be `nil` only when `LogMode: false` — GORM's `Info`/`Warn`/`Error` callbacks call it directly and will panic on a nil logger if `LogMode: true`.
 
 ---
 

@@ -16,6 +16,8 @@ go test ./httpclient/...
 go test ./logger/...
 go test ./apperror/...
 go test ./appContext/...
+go test ./cache/...
+go test ./database/...
 
 # Run a single test by name
 go test -run TestRequest_DoRequest ./httpclient/...
@@ -37,6 +39,8 @@ go test -run=^$ -bench=. -benchmem -benchtime=3s ./bench/...
 | `appContext` | Request-scoped context carrier — propagates trace ID, user ID, IP, method across service layers |
 | `httpclient` | Fluent HTTP client (stdlib only — no external HTTP library dependencies) |
 | `apperror` | `ApplicationError` type bridging HTTP status codes and gRPC codes |
+| `cache` | Redis client (standalone/Sentinel/Cluster via `redis.UniversalClient`), typed `Store[T]`, stampede-protected `ObjectCache[T]`, distributed `Lock` |
+| `database` | GORM connection factory for MySQL/PostgreSQL, wired with `logger` |
 | `grpc` | gRPC client wrapper with context/metadata propagation |
 | `constant` | Context key constants shared across packages |
 | `password` | bcrypt hashing helpers |
@@ -165,6 +169,35 @@ Async by default — buffered channel + `WorkerPoolSize` goroutines (default 2).
 
 **`rpcCodeToApplicationCode`** maps gRPC → HTTP. **`httpCodeToRPCCode`** maps HTTP → gRPC (reverse direction for `ToGRPCStatus`). Both are package-level maps; `codeApplication` and `httpCodeToGRPCCode` are the lookup helpers.
 
+### Cache Package (`cache`)
+
+`RedisClient` wraps `redis.UniversalClient` (not the concrete `*redis.Client`), so the same wrapper works over a standalone connection, a Sentinel-backed failover client, or a `*redis.ClusterClient`.
+
+**`NewRedisClient(RedisOption)`** dials via `redis.NewUniversalClient`, which selects the concrete client type from the option shape:
+- `len(Addresses) > 1` or `IsClusterMode: true` → `*redis.ClusterClient`
+- `MasterName` set → Sentinel failover (go-redis implements this as a specially-dialed `*redis.Client`, not a distinct type — do not type-assert to detect Sentinel mode)
+- otherwise → standalone `*redis.Client`
+
+`resolveAddrs(config)` picks `Addresses` when non-empty, else falls back to the single `Address` field — kept as its own function so address-selection logic is unit-testable without a reachable Redis.
+
+**`WrapRedisClient(client redis.UniversalClient) *RedisClient`** wraps an already-connected client instead of dialing a new one — use when the caller already owns a shared client wired elsewhere.
+
+**`pingRedis`** calls `client.Ping(ctx)` directly (not `.Conn().Ping(ctx)`) so it works identically across standalone, Sentinel, and cluster clients — `Conn()` only exists on the concrete `*redis.Client` type.
+
+**`Store[T]`** (`store.go`) is a generic single-type Redis cache with a fixed TTL; JSON (de)serialization goes through `utils/convert`.
+
+**`ObjectCache[T]`** (`object_cache.go`) adds stampede protection on top of `Store[T]`: an in-process `singleflight.Group` coalesces concurrent goroutines within a pod, and a Redis `Lock` (SETNX-based, `lock.go`) coalesces across pods. The lock winner double-checks the cache, loads, and populates; everyone else polls via `waitForCache` for up to `LockWait` before falling back to a direct (uncached) load. `Policy` (`policy.go`) controls whether a given key is cacheable at all — `PolicyAll`, `PolicyNone`, `PolicyKeys`, `PolicyFunc`.
+
+**`Lock`** (`lock.go`) is acquired via `RedisClient.TryLock` (SETNX with a random UUID token) and released via a Lua script that only deletes the key if it still holds the caller's token — an expired-and-reacquired lock is never released out from under its new holder.
+
+**`cache` has zero dependency on `logger` or `apperror`** — every method returns a plain `error`. Callers are free to wrap results however they want.
+
+### Database Package (`database`)
+
+**`NewConnection(Option, *logger.Logger)`** dispatches to `createMysqlConnection` or `createPostgresConnection` based on `Option.DbType` (`""` defaults to postgres), pings the connection, then wires GORM's query logger via `Logger.NewGormLogger`.
+
+**The `*logger.Logger` parameter is a hard dependency on go-lib's concrete logger type** (not an interface) — this is the one place in `cache`/`database` that isn't logger-agnostic, because GORM's logging hook is wired at connection time. Passing `nil` is only safe when `Option.LogMode` is `false` (`gormlogger.Silent`); with `LogMode: true` and a nil logger, `GormLogger.Info/Warn/Error` dereference it directly and panic.
+
 ### Key Design Rules
 
 - **Circuit breaker state is global per host**, not per `RequestBuilder`. A new builder per request is fine.
@@ -188,3 +221,7 @@ Async by default — buffered channel + `WorkerPoolSize` goroutines (default 2).
 - **`ToGRPCStatus()` is for gRPC handler returns** — call `.Err()` on the result to get the gRPC-compatible error: `return nil, ae.ToGRPCStatus().Err()`.
 - **Prefer `log.WithContext(ctx)` over passing `ctx` per call** — when multiple log statements share the same context, bind once: `clog := log.WithContext(ctx)` then use `clog.Info/Error/...`. Do not call `log.Info(ctx, ...)` in a loop with the same ctx.
 - **`zapWithContext` is unexported** — do not rename it back or expose it; its purpose is internal async-worker enrichment only. The public `WithContext` on `*Logger` returns `*ContextualLogger`, not `*zap.Logger`.
+- **`cache.RedisClient` holds `redis.UniversalClient`, never `*redis.Client`** — do not narrow the field or a method signature back to the concrete type, or Sentinel/Cluster support silently breaks.
+- **Sentinel failover is not a distinct Go type** — `redis.NewFailoverClient` returns `*redis.Client`; never write a type assertion expecting a `*redis.FailoverClient` to detect Sentinel mode.
+- **`database.NewConnection`'s `logger` param may only be `nil` when `LogMode: false`** — with `LogMode: true`, a nil logger panics inside `GormLogger.Info/Warn/Error`.
+- **`cache` and `database` never import `apperror`** — they return plain `error`; do not add an `apperror` dependency here, callers decide their own error-wrapping convention.

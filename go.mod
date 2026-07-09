@@ -6,6 +6,8 @@ toolchain go1.26.4
 
 require (
 	github.com/alicebob/miniredis/v2 v2.37.0
+	github.com/coreos/go-oidc/v3 v3.20.0
+	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/gofiber/fiber/v2 v2.52.13
 	github.com/google/uuid v1.6.0
 	github.com/pkg/errors v0.9.1

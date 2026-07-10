@@ -3,11 +3,12 @@ package oauth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
+	Error "github.com/ewinjuman/go-lib/v2/apperror"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
@@ -25,7 +26,10 @@ func newTestFacebookAPIServer(t *testing.T, user facebookUser) *httptest.Server 
 }
 
 func TestFacebookProvider_FetchUserInfo_Success(t *testing.T) {
-	srv := newTestFacebookAPIServer(t, facebookUser{ID: "fb-1", Name: "Face Book", Email: "face@example.com"})
+	user := facebookUser{ID: "fb-1", Name: "Face Book", Email: "face@example.com"}
+	user.Picture.Data.URL = "https://graph.facebook.com/v19.0/fb-1/picture"
+
+	srv := newTestFacebookAPIServer(t, user)
 	defer srv.Close()
 
 	p := NewFacebookProvider("client-id", "client-secret", "https://app.example.com/callback").(*facebookProvider)
@@ -39,6 +43,7 @@ func TestFacebookProvider_FetchUserInfo_Success(t *testing.T) {
 	// implies verified.
 	assert.True(t, pu.EmailVerified)
 	assert.Equal(t, "Face Book", pu.Name)
+	assert.Equal(t, "https://graph.facebook.com/v19.0/fb-1/picture", pu.AvatarURL)
 }
 
 func TestFacebookProvider_FetchUserInfo_NoEmailGranted(t *testing.T) {
@@ -63,7 +68,7 @@ func TestFacebookProvider_VerifyIDToken_NotSupported(t *testing.T) {
 
 func TestFacebookProvider_HasTimeout(t *testing.T) {
 	p := NewFacebookProvider("client-id", "client-secret", "https://app.example.com/callback").(*facebookProvider)
-	assert.Greater(t, p.httpClient.Timeout, time.Duration(0))
+	assert.Equal(t, defaultFacebookHTTPTimeout, p.httpClient.Timeout)
 }
 
 func TestFacebookProvider_FetchUserInfo_NonOKStatus(t *testing.T) {
@@ -76,5 +81,16 @@ func TestFacebookProvider_FetchUserInfo_NonOKStatus(t *testing.T) {
 	p.graphBaseURL = srv.URL
 
 	_, err := p.FetchUserInfo(context.Background(), &oauth2.Token{AccessToken: "bad-token"})
-	assert.Error(t, err)
+	require.Error(t, err)
+
+	var appErr *Error.ApplicationError
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, http.StatusUnauthorized, appErr.ErrorCode)
+}
+
+func TestFacebookProvider_AuthCodeURL(t *testing.T) {
+	p := NewFacebookProvider("client-id", "client-secret", "https://app.example.com/callback")
+	authURL := p.AuthCodeURL("state-1", nil)
+	assert.Contains(t, authURL, "facebook.com")
+	assert.Contains(t, authURL, "state=state-1")
 }

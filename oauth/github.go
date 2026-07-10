@@ -146,5 +146,8 @@ func (p *githubProvider) getJSON(ctx context.Context, token *oauth2.Token, path 
 	if resp.StatusCode != http.StatusOK {
 		return Error.Unauthorized(fmt.Sprintf("oauth: github request to %s returned %d", path, resp.StatusCode))
 	}
-	return json.NewDecoder(resp.Body).Decode(out)
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return Error.InternalError(fmt.Sprintf("oauth: github response from %s could not be decoded: %v", path, err)).WithCause(err)
+	}
+	return nil
 }

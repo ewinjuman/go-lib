@@ -18,9 +18,14 @@ import (
 const defaultFacebookHTTPTimeout = 10 * time.Second
 
 type facebookUser struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Email string `json:"email"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Email   string `json:"email"`
+	Picture struct {
+		Data struct {
+			URL string `json:"url"`
+		} `json:"data"`
+	} `json:"picture"`
 }
 
 type facebookProvider struct {
@@ -69,8 +74,10 @@ func (p *facebookProvider) VerifyIDToken(context.Context, string, string) (*Prov
 }
 
 func (p *facebookProvider) FetchUserInfo(ctx context.Context, token *oauth2.Token) (*ProviderUser, error) {
-	reqURL := fmt.Sprintf("%s/me?fields=%s&access_token=%s",
-		p.graphBaseURL, url.QueryEscape("id,name,email,picture"), url.QueryEscape(token.AccessToken))
+	q := url.Values{}
+	q.Set("fields", "id,name,email,picture")
+	q.Set("access_token", token.AccessToken)
+	reqURL := fmt.Sprintf("%s/me?%s", p.graphBaseURL, q.Encode())
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
@@ -95,15 +102,14 @@ func (p *facebookProvider) FetchUserInfo(ctx context.Context, token *oauth2.Toke
 	return &ProviderUser{
 		ProviderUserID: user.ID,
 		// Facebook's Graph API only ever populates the "email" field once the
-		// user has confirmed/verified that address with Facebook — unlike
-		// GitHub, which can expose a public email that was never
-		// independently proven owned, Facebook gives no way to obtain an
-		// unverified email through this endpoint at all. So EmailVerified
-		// being derived from mere presence of the field is a safe,
-		// Facebook-specific inference, not the same mistake that was
-		// rejected in GitHub's provider review (see github.go).
+		// user has verified that address with Facebook — there is no way to
+		// obtain an unverified email through this endpoint. Presence of the
+		// field is therefore a reliable verification signal on its own (this
+		// is a Facebook-specific guarantee; not every provider's public email
+		// field carries the same guarantee).
 		Email:         user.Email,
 		EmailVerified: user.Email != "",
 		Name:          user.Name,
+		AvatarURL:     user.Picture.Data.URL,
 	}, nil
 }

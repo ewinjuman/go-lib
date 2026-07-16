@@ -26,6 +26,7 @@ go get github.com/ewinjuman/go-lib/v2
 | [`apperror`](#error-handling) | Standardized error types with HTTP/gRPC code mapping |
 | [`cache`](#cache) | Redis client (standalone/Sentinel/Cluster), typed `Store[T]`, stampede-protected `ObjectCache[T]`, distributed `Lock` |
 | [`database`](#database) | GORM connection factory for MySQL/PostgreSQL, wired with `logger` |
+| [`oauth`](#oauth) | Multi-provider OAuth/OIDC login: generic OIDC (Google, etc.), GitHub, Facebook, PKCE, provider registry |
 | [`password`](#password) | Bcrypt password hashing and comparison |
 | [`constant`](#constant) | Context key constants for request propagation |
 | [`utils`](#utils) | General utilities: conversion, retry, code generation |
@@ -799,6 +800,71 @@ db, err := database.NewConnection(database.Option{
 ```
 
 `logger` may be `nil` only when `LogMode: false` — GORM's `Info`/`Warn`/`Error` callbacks call it directly and will panic on a nil logger if `LogMode: true`.
+
+---
+
+## OAuth
+
+Multi-provider OAuth/OIDC login toolkit. One `Provider` interface, looked up by name through a `Registry`. Google (and any OIDC-compliant issuer) is covered by a single generic OIDC provider; GitHub and Facebook have bespoke REST-based implementations since neither is OIDC-compliant.
+
+### Building Providers
+
+```go
+import "github.com/ewinjuman/go-lib/v2/oauth"
+
+// Google — OIDC discovery against accounts.google.com
+google, err := oauth.NewGoogleProvider(ctx, clientID, clientSecret, redirectURL)
+
+// Any OIDC-compliant issuer (Microsoft Entra, Okta, Keycloak, ...)
+okta, err := oauth.NewOIDCProvider(ctx, oauth.OIDCConfig{
+    Name:         "okta",
+    IssuerURL:    "https://your-org.okta.com",
+    ClientID:     clientID,
+    ClientSecret: clientSecret,
+    RedirectURL:  redirectURL,
+    Scopes:       []string{"groups"}, // appended to "openid email profile"
+})
+
+// GitHub & Facebook — REST-based user info, no id_token
+github := oauth.NewGitHubProvider(clientID, clientSecret, redirectURL)
+facebook := oauth.NewFacebookProvider(clientID, clientSecret, redirectURL)
+```
+
+### Registry
+
+```go
+registry := oauth.NewRegistry(google, github, facebook)
+
+p, err := registry.Get("github") // 404 *ApplicationError when not registered
+```
+
+### Authorization Code Flow (server-side redirect)
+
+```go
+pkce := oauth.NewPKCE() // S256; providers without PKCE support ignore it (nil-safe)
+url := p.AuthCodeURL(state, pkce)
+// ... user consents, provider redirects back with ?code=...
+
+token, err := p.Exchange(ctx, code, pkce)
+user, err := p.FetchUserInfo(ctx, token)
+// user.ProviderUserID, user.Email, user.EmailVerified, user.Name, user.AvatarURL
+```
+
+### Token Verification Flow (mobile/SPA)
+
+```go
+if p.SupportsIDToken() { // OIDC providers
+    user, err := p.VerifyIDToken(ctx, rawIDToken, nonce) // signature + audience + optional nonce
+} else { // GitHub, Facebook
+    user, err := p.FetchUserInfo(ctx, &oauth2.Token{AccessToken: rawAccessToken})
+}
+```
+
+Notes:
+
+- `ProviderUser` is the normalized identity across all providers. `EmailVerified` semantics per provider: OIDC uses the `email_verified` claim; GitHub falls back to `/user/emails` and reports the primary email's verified flag; Facebook only ever returns confirmed addresses, so presence implies verified.
+- GitHub/Facebook REST calls use a bounded 10s HTTP timeout — never `http.DefaultClient`.
+- `NewOIDCProvider` performs issuer discovery at construction time and returns a `ServiceUnavailable` error when the issuer is unreachable.
 
 ---
 

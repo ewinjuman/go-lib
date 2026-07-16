@@ -18,6 +18,7 @@ go test ./apperror/...
 go test ./appContext/...
 go test ./cache/...
 go test ./database/...
+go test ./oauth/...
 
 # Run a single test by name
 go test -run TestRequest_DoRequest ./httpclient/...
@@ -41,6 +42,7 @@ go test -run=^$ -bench=. -benchmem -benchtime=3s ./bench/...
 | `apperror` | `ApplicationError` type bridging HTTP status codes and gRPC codes |
 | `cache` | Redis client (standalone/Sentinel/Cluster via `redis.UniversalClient`), typed `Store[T]`, stampede-protected `ObjectCache[T]`, distributed `Lock` |
 | `database` | GORM connection factory for MySQL/PostgreSQL, wired with `logger` |
+| `oauth` | Multi-provider OAuth/OIDC login: `Provider` interface + `Registry`, generic OIDC provider (Google/any issuer via discovery), GitHub + Facebook REST providers, PKCE helper |
 | `grpc` | gRPC client wrapper with context/metadata propagation |
 | `constant` | Context key constants shared across packages |
 | `password` | bcrypt hashing helpers |
@@ -197,6 +199,24 @@ Async by default — buffered channel + `WorkerPoolSize` goroutines (default 2).
 **`NewConnection(Option, *logger.Logger)`** dispatches to `createMysqlConnection` or `createPostgresConnection` based on `Option.DbType` (`""` defaults to postgres), pings the connection, then wires GORM's query logger via `Logger.NewGormLogger`.
 
 **The `*logger.Logger` parameter is a hard dependency on go-lib's concrete logger type** (not an interface) — this is the one place in `cache`/`database` that isn't logger-agnostic, because GORM's logging hook is wired at connection time. Passing `nil` is only safe when `Option.LogMode` is `false` (`gormlogger.Silent`); with `LogMode: true` and a nil logger, `GormLogger.Info/Warn/Error` dereference it directly and panic.
+
+### OAuth Package (`oauth`)
+
+**`Provider`** is the single interface every provider implements: `Name()`, `SupportsIDToken()`, `AuthCodeURL(state, pkce)`, `Exchange(ctx, code, pkce)`, `FetchUserInfo(ctx, token)`, `VerifyIDToken(ctx, rawIDToken, nonce)`. All providers return a normalized **`ProviderUser`** (`ProviderUserID`, `Email`, `EmailVerified`, `Name`, `AvatarURL`).
+
+**`Registry`** (`NewRegistry(providers...)`) maps `Name()` → `Provider`; `Get(name)` returns a 404 `*ApplicationError` for unregistered names — callers can pass it straight up as the HTTP response.
+
+**Generic OIDC provider** (`oidc.go`, `NewOIDCProvider`) covers Google (`NewGoogleProvider` = convenience wrapper with issuer `https://accounts.google.com`) and any OIDC-compliant issuer via discovery. Discovery happens at construction; failure returns `ServiceUnavailable`. `VerifyIDToken` checks signature + audience, and nonce only when a non-empty nonce is passed. `FetchUserInfo` extracts `id_token` from the token response and delegates to `VerifyIDToken`.
+
+**GitHub** (`github.go`) and **Facebook** (`facebook.go`) are REST-based — neither is OIDC-compliant, so `SupportsIDToken()` is `false` and `VerifyIDToken` returns a `BadRequest` error. Callers doing token-verification login must branch on `SupportsIDToken()` and use `FetchUserInfo(ctx, &oauth2.Token{AccessToken: ...})` for these.
+
+**`EmailVerified` semantics per provider:** OIDC → `email_verified` claim; GitHub → public email implies verified, otherwise falls back to `/user/emails` and uses the primary email's `verified` flag; Facebook → email presence implies verified (Graph API only returns confirmed addresses).
+
+**PKCE** (`NewPKCE()`, S256) is nil-safe: providers that don't support it (GitHub, Facebook) accept and ignore a non-nil `*PKCE`, so callers can generate one unconditionally.
+
+- **GitHub/Facebook HTTP calls use a bounded 10s `http.Client`** — never `http.DefaultClient` (unbounded). The `apiBaseURL`/`graphBaseURL` fields exist to point tests at `httptest.NewServer`; do not export them.
+- **`oauth` errors use `apperror`** (`BadRequest`/`Unauthorized`/`ServiceUnavailable`/`NotFound` with `.WithCause`) — unlike `cache`/`database`, this package intentionally depends on `apperror`.
+- **OIDC tests mint real signed JWTs** via `go-jose` against a local discovery+JWKS `httptest` server (`oidc_test.go`) — extend that harness rather than stubbing the verifier when adding OIDC behavior.
 
 ### Key Design Rules
 

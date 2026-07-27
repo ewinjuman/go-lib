@@ -3,11 +3,12 @@ package convert
 import (
 	"bufio"
 	"encoding/json"
-	"github.com/ewinjuman/go-lib/v2/utils/convert/eng"
 	"math"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/ewinjuman/go-lib/v2/utils/convert/eng"
 )
 
 // convert object to another object
@@ -142,13 +143,13 @@ func convert(number int) string {
 	positive := math.Abs(float64(number))
 
 	// Form three-digit groups
-	for i := 0; i < groupsNumber; i++ {
+	for i := range groupsNumber {
 		groups[i] = digitGroup(math.Mod(positive, 1000))
 		positive /= 1000
 	}
 
 	var textGroup [groupsNumber]string
-	for i := 0; i < groupsNumber; i++ {
+	for i := range groupsNumber {
 		textGroup[i] = digitGroup2Text(groups[i])
 	}
 	combined := textGroup[0]

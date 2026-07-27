@@ -1,16 +1,12 @@
 package utils
 
 import (
+	"slices"
 	"strings"
 )
 
 func ContainsInArr(s []string, e string) bool {
-	for _, a := range s {
-		if a == e {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(s, e)
 }
 
 func ContainsInArrNoCaseSensitive(s []string, e string) bool {
@@ -42,11 +38,11 @@ func BetweenString(value string, after string, before string) string {
 
 // BeforeString Get substring before a string.
 func BeforeString(value string, before string) string {
-	pos := strings.Index(value, before)
-	if pos == -1 {
+	before0, _, ok := strings.Cut(value, before)
+	if !ok {
 		return ""
 	}
-	return value[0:pos]
+	return before0
 }
 
 // AfterString Get substring after a string.
@@ -63,7 +59,7 @@ func AfterString(value string, after string) string {
 }
 
 // Or check if testValue is empty, if empty return defaultValue.
-func Or(testValue, defaultValue interface{}) interface{} {
+func Or(testValue, defaultValue any) any {
 	if !IsEmpty(testValue) {
 		return testValue
 	}

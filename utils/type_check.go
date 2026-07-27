@@ -2,7 +2,7 @@ package utils
 
 import "reflect"
 
-func IsError(maybeErr interface{}) (bool, interface{}) {
+func IsError(maybeErr any) (bool, any) {
 
 	if maybeErr == nil {
 		return false, nil
@@ -20,7 +20,7 @@ func IsError(maybeErr interface{}) (bool, interface{}) {
 }
 
 // IsFunc check if args is func kind
-func IsFunc(maybeFunc interface{}) bool {
+func IsFunc(maybeFunc any) bool {
 	if maybeFunc != nil {
 		return reflect.TypeOf(maybeFunc).Kind() == reflect.Func
 	}
@@ -28,7 +28,7 @@ func IsFunc(maybeFunc interface{}) bool {
 }
 
 // IsStruct check if arg is struct kind
-func IsStruct(maybeStruct interface{}) bool {
+func IsStruct(maybeStruct any) bool {
 	if maybeStruct != nil {
 		if IsPtr(maybeStruct) {
 			refVal := reflect.ValueOf(maybeStruct)
@@ -40,7 +40,7 @@ func IsStruct(maybeStruct interface{}) bool {
 }
 
 // IsPtr check if arg is pointer kind
-func IsPtr(maybePtr interface{}) bool {
+func IsPtr(maybePtr any) bool {
 	if maybePtr != nil {
 		if rf, ok := maybePtr.(reflect.Value); ok {
 			if !rf.IsValid() {
@@ -54,7 +54,7 @@ func IsPtr(maybePtr interface{}) bool {
 }
 
 // IsMap check if arg is map kind
-func IsMap(maybeMap interface{}) bool {
+func IsMap(maybeMap any) bool {
 	if maybeMap != nil {
 		if rf, ok := maybeMap.(reflect.Value); ok {
 			if !rf.IsValid() {
@@ -73,7 +73,7 @@ func IsMap(maybeMap interface{}) bool {
 }
 
 // IsSlice check if arg is slice kind
-func IsSlice(maybeSlice interface{}) bool {
+func IsSlice(maybeSlice any) bool {
 	if maybeSlice != nil {
 		if rf, ok := maybeSlice.(reflect.Value); ok {
 			if !rf.IsValid() {
@@ -92,13 +92,13 @@ func IsSlice(maybeSlice interface{}) bool {
 }
 
 // IsCompound ...
-func IsCompound(maybeCompound interface{}) bool {
+func IsCompound(maybeCompound any) bool {
 	return IsMap(maybeCompound) ||
 		IsSlice(maybeCompound) ||
 		IsStruct(maybeCompound)
 }
 
-func IsEmpty(arg interface{}) bool {
+func IsEmpty(arg any) bool {
 
 	if rf, ok := arg.(reflect.Value); ok {
 		if !rf.IsValid() {

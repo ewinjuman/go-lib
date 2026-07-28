@@ -143,7 +143,7 @@ Async by default — buffered channel + `WorkerPoolSize` goroutines (default 2).
 
 **`GormLogger.Info/Warn/Error`** delegate directly to `l.Logger.Info/Warn/Error` (no extra `go` wrapper) since the logger is already async. `GormLogger.Trace` keeps its own goroutine because it runs non-trivial computation (`fc()`) before logging.
 
-`MaskingPaths` → partial masking (e.g. email → `u***@***.com`, only TLD shown in domain). `RedactionPaths` → `[REDACTED]`. Both are case-insensitive and cached in a `sync.Map`. `maskMap` unwraps `reflect.Interface` before checking kind — correctly masks string values inside `map[string]interface{}`. GORM integration is in `logger/gorm_logger.go`.
+`MaskingPaths` → partial masking (e.g. email → `u***@***.com`, only TLD shown in domain). `RedactionPaths` → `[REDACTED]`. Both are case-insensitive and cached in a `sync.Map`. `maskMap` unwraps `reflect.Interface` before checking kind — correctly masks string values inside `map[string]any`. GORM integration is in `logger/gorm_logger.go`.
 
 **`*Logger.WithContext(ctx) *ContextualLogger`** — bind a context once and log without passing `ctx` on every call. Returns a `*ContextualLogger` whose `Debug/Info/Warn/Error/Fatal` methods need no ctx argument. Equivalent to `appCtx.Log()` but works anywhere you have a `*Logger` and a `context.Context`. Internally, the previously-exported `WithContext` that returned `*zap.Logger` has been renamed `zapWithContext` (unexported) so the name is free for this public API.
 

@@ -48,7 +48,7 @@ func TestIsValidEmail(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// maskMap — map[string]interface{} harus ter-mask (fix interface{} unwrap)
+// maskMap — map[string]any harus ter-mask (fix any unwrap)
 // ---------------------------------------------------------------------------
 
 func TestMaskMap_InterfaceValues(t *testing.T) {
@@ -62,12 +62,12 @@ func TestMaskMap_InterfaceValues(t *testing.T) {
 	}
 	defer l.Shutdown()
 
-	m := map[string]interface{}{
+	m := map[string]any{
 		"password": "supersecret",
 		"username": "alice",
 	}
 
-	result := l.maskComplexValue(m, "").(map[string]interface{})
+	result := l.maskComplexValue(m, "").(map[string]any)
 
 	pwd, ok := result["password"].(string)
 	if !ok {
@@ -125,7 +125,7 @@ func TestMaskComplexValue_DisableMasking_ReturnsVal(t *testing.T) {
 		DisableAsync:   true,
 	})
 	defer l.Shutdown()
-	v := map[string]interface{}{"key": "value"}
+	v := map[string]any{"key": "value"}
 	result := l.maskComplexValue(v, "")
 	if result == nil {
 		t.Error("maskComplexValue with DisableMasking=true returned nil, want original value")

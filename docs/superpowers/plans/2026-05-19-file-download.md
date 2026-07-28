@@ -253,7 +253,7 @@ Request struct {
     ID                    string
     URL                   string
     Method                Method
-    Body                  interface{}
+    Body                  any
     File                  []MultipartData
     PathParams            map[string]string
     QueryParams           map[string]string
@@ -322,7 +322,7 @@ func (r *Request) processResponse(response *Response, resultRequest *resty.Respo
 		r.Writer.Print(r.Context, "http_response", r.Method.String(), url, response.StatusCode, "[streamed]", resultRequest.Header(), responseTime, nil)
 		return
 	}
-	var result interface{}
+	var result any
 	contentType := resultRequest.Header().Get("Content-Type")
 	switch contentType {
 	case "application/xml; charset=utf-8":
@@ -586,7 +586,7 @@ Request struct {
     ID                    string
     URL                   string
     Method                Method
-    Body                  interface{}
+    Body                  any
     File                  []MultipartData
     PathParams            map[string]string
     QueryParams           map[string]string

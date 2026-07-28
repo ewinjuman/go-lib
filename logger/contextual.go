@@ -40,30 +40,30 @@ func (c *ContextualLogger) Warn(msg string, fields ...Field)  { c.logger.Warn(c.
 func (c *ContextualLogger) Error(msg string, fields ...Field) { c.logger.Error(c.ctx, msg, fields...) }
 func (c *ContextualLogger) Fatal(msg string, fields ...Field) { c.logger.Fatal(c.ctx, msg, fields...) }
 
-func (c *ContextualLogger) LogRequest(url, method string, requestTime time.Time, headers http.Header, request interface{}, message ...interface{}) {
+func (c *ContextualLogger) LogRequest(url, method string, requestTime time.Time, headers http.Header, request any, message ...any) {
 	c.logger.LogRequest(c.ctx, url, method, requestTime, headers, request, message...)
 }
 
-func (c *ContextualLogger) LogResponse(url, method string, requestTime time.Time, response interface{}, message ...interface{}) {
+func (c *ContextualLogger) LogResponse(url, method string, requestTime time.Time, response any, message ...any) {
 	c.logger.LogResponse(c.ctx, url, method, requestTime, response, message...)
 }
 
-func (c *ContextualLogger) LogRequestHttp(url, method string, body, header, params interface{}) {
+func (c *ContextualLogger) LogRequestHttp(url, method string, body, header, params any) {
 	c.logger.LogRequestHttp(c.ctx, url, method, body, header, params)
 }
 
-func (c *ContextualLogger) LogResponseHttp(responseTime time.Duration, code int, url, method string, body interface{}, err error) {
+func (c *ContextualLogger) LogResponseHttp(responseTime time.Duration, code int, url, method string, body any, err error) {
 	c.logger.LogResponseHttp(c.ctx, responseTime, code, url, method, body, err)
 }
 
-func (c *ContextualLogger) LogRequestGrpc(url, method string, body, header interface{}) {
+func (c *ContextualLogger) LogRequestGrpc(url, method string, body, header any) {
 	c.logger.LogRequestGrpc(c.ctx, url, method, body, header)
 }
 
-func (c *ContextualLogger) LogResponseGrpc(startProcessTime time.Time, url, method string, body interface{}) {
+func (c *ContextualLogger) LogResponseGrpc(startProcessTime time.Time, url, method string, body any) {
 	c.logger.LogResponseGrpc(c.ctx, startProcessTime, url, method, body)
 }
 
-func (c *ContextualLogger) LogDatabase(sql string, result, errorVal interface{}) {
+func (c *ContextualLogger) LogDatabase(sql string, result, errorVal any) {
 	c.logger.LogDatabase(c.ctx, sql, result, errorVal)
 }

@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func formatResponse(message ...interface{}) string {
+func formatResponse(message ...any) string {
 	sb := strings.Builder{}
 
 	for _, msg := range message {
@@ -27,7 +27,7 @@ func formatResponse(message ...interface{}) string {
 	return sb.String()
 }
 
-func (l *Logger) LogRequest(ctx context.Context, url, method string, requestTime time.Time, headers http.Header, request interface{}, message ...interface{}) {
+func (l *Logger) LogRequest(ctx context.Context, url, method string, requestTime time.Time, headers http.Header, request any, message ...any) {
 	msg := "request_started"
 	if message != nil {
 		msg = formatResponse(message...)
@@ -40,7 +40,7 @@ func (l *Logger) LogRequest(ctx context.Context, url, method string, requestTime
 	)
 }
 
-func (l *Logger) LogResponse(ctx context.Context, url, method string, requestTime time.Time, response interface{}, message ...interface{}) {
+func (l *Logger) LogResponse(ctx context.Context, url, method string, requestTime time.Time, response any, message ...any) {
 	stop := time.Now()
 	rt := stop.Sub(requestTime).Milliseconds()
 
@@ -57,7 +57,7 @@ func (l *Logger) LogResponse(ctx context.Context, url, method string, requestTim
 	)
 }
 
-func (l *Logger) LogRequestHttp(ctx context.Context, url string, method string, body interface{}, header interface{}, params interface{}) {
+func (l *Logger) LogRequestHttp(ctx context.Context, url string, method string, body any, header any, params any) {
 	l.Info(ctx, "request_http_started",
 		String("method", method),
 		String("url", url),
@@ -67,7 +67,7 @@ func (l *Logger) LogRequestHttp(ctx context.Context, url string, method string, 
 	)
 }
 
-func (l *Logger) LogResponseHttp(ctx context.Context, responseTime time.Duration, code int, url string, method string, body interface{}, err error) {
+func (l *Logger) LogResponseHttp(ctx context.Context, responseTime time.Duration, code int, url string, method string, body any, err error) {
 	if err != nil {
 		l.Error(ctx, "request_http_completed",
 			String("method", method),
@@ -88,7 +88,7 @@ func (l *Logger) LogResponseHttp(ctx context.Context, responseTime time.Duration
 	}
 }
 
-func (l *Logger) LogRequestGrpc(ctx context.Context, url string, method string, body interface{}, header interface{}) {
+func (l *Logger) LogRequestGrpc(ctx context.Context, url string, method string, body any, header any) {
 
 	l.Info(ctx, "request_grpc_started",
 		String("method", method),
@@ -98,7 +98,7 @@ func (l *Logger) LogRequestGrpc(ctx context.Context, url string, method string, 
 	)
 }
 
-func (l *Logger) LogResponseGrpc(ctx context.Context, startProcessTime time.Time, url string, method string, body interface{}) {
+func (l *Logger) LogResponseGrpc(ctx context.Context, startProcessTime time.Time, url string, method string, body any) {
 	stop := time.Now()
 	l.Info(ctx, "response_grpc_started",
 		String("method", method),
@@ -108,7 +108,7 @@ func (l *Logger) LogResponseGrpc(ctx context.Context, startProcessTime time.Time
 	)
 }
 
-func (l *Logger) LogDatabase(ctx context.Context, sql string, result interface{}, error interface{}) {
+func (l *Logger) LogDatabase(ctx context.Context, sql string, result any, error any) {
 	l.Info(ctx, "",
 		String("sql", sql),
 		Interface("result", result),

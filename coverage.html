@@ -381,7 +381,7 @@ func (r *Request) processResponse(response *Response, resultRequest *resty.Respo
         if !r.DebugMode </span><span class="cov8" title="1">{
                 return
         }</span>
-        <span class="cov0" title="0">var result interface{}
+        <span class="cov0" title="0">var result any
         contentType := resultRequest.Header().Get("Content-Type")
         switch contentType </span>{
         case "application/xml; charset=utf-8":<span class="cov0" title="0">
@@ -443,7 +443,7 @@ type (
                 ID                    string
                 URL                   string
                 Method                Method
-                Body                  interface{}
+                Body                  any
                 File                  []MultipartData
                 PathParams            map[string]string
                 QueryParams           map[string]string
@@ -520,7 +520,7 @@ func (rb *RequestBuilder) WithHeaders(headers map[string]string) *RequestBuilder
         <span class="cov8" title="1">return rb</span>
 }
 
-func (rb *RequestBuilder) WithBody(body interface{}) *RequestBuilder <span class="cov8" title="1">{
+func (rb *RequestBuilder) WithBody(body any) *RequestBuilder <span class="cov8" title="1">{
         rb.request.Body = body
         return rb
 }</span>
@@ -684,7 +684,7 @@ func (r *Response) statusError() error <span class="cov8" title="1">{
 }
 
 // Consume unmarshals the response body into v. Returns an error if the status is not successful.
-func (r *Response) Consume(v interface{}) error <span class="cov8" title="1">{
+func (r *Response) Consume(v any) error <span class="cov8" title="1">{
         if r.Error != nil </span><span class="cov0" title="0">{
                 return r.Error
         }</span>

@@ -13,8 +13,8 @@ var formData map[string]string
 
 func TestObjectToObject(t *testing.T) {
 	type args struct {
-		in  interface{}
-		out interface{}
+		in  any
+		out any
 	}
 	tests := []struct {
 		name string
@@ -36,7 +36,7 @@ func TestObjectToObject(t *testing.T) {
 
 func TestObjectToString(t *testing.T) {
 	type args struct {
-		data interface{}
+		data any
 	}
 	tests := []struct {
 		name string
@@ -74,7 +74,7 @@ func TestObjectToString(t *testing.T) {
 func TestStringToObject(t *testing.T) {
 	type args struct {
 		in  string
-		out interface{}
+		out any
 	}
 	tests := []struct {
 		name string

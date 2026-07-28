@@ -133,7 +133,7 @@ func getUsers(c *fiber.Ctx) error {
 	*/
 
 	// Prepare response
-	users := []map[string]interface{}{
+	users := []map[string]any{
 		{"id": 1, "name": "User 1"},
 		{"id": 2, "name": "User 2"},
 	}

@@ -289,8 +289,8 @@ Fields stored locally (not propagated to context):
 | `SetResponseStatus(int)` | `GetResponseStatus() int` | HTTP response code (set in after-middleware) |
 | `SetPort(int)` | `GetPort() int` | Listening port |
 | `SetSrcIP(string)` | `GetSrcIP() string` | Source IP before proxying |
-| `SetHeader(interface{})` | `GetHeader() interface{}` | Raw request header |
-| `SetRequest(interface{})` | `GetRequest() interface{}` | Raw request body |
+| `SetHeader(any)` | `GetHeader() any` | Raw request header |
+| `SetRequest(any)` | `GetRequest() any` | Raw request body |
 
 All setters are chainable and safe for concurrent use.
 

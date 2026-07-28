@@ -258,7 +258,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func jsonBody(v interface{}) []byte {
+func jsonBody(v any) []byte {
 	b, _ := json.Marshal(v)
 	return b
 }
@@ -409,7 +409,7 @@ func (r *Response) HttpCode() int { return r.StatusCode }
 
 // Consume JSON-unmarshals Body into v. Returns an error if transport failed,
 // status is not in SuccessCodes, or Body is nil.
-func (r *Response) Consume(v interface{}) error {
+func (r *Response) Consume(v any) error {
 	if r.Error != nil {
 		return r.Error
 	}
@@ -426,7 +426,7 @@ func (r *Response) Consume(v interface{}) error {
 }
 
 // ConsumeXML XML-unmarshals Body into v. Same preconditions as Consume.
-func (r *Response) ConsumeXML(v interface{}) error {
+func (r *Response) ConsumeXML(v any) error {
 	if r.Error != nil {
 		return r.Error
 	}
@@ -786,7 +786,7 @@ func TestRequestBuilder_WithRawBody_setsRawModeAndContentType(t *testing.T) {
 func TestRequestBuilder_WithGraphQL_setsJSONBodyWithQueryKey(t *testing.T) {
 	rb := testClient().Post("/gql").WithGraphQL("{ users { id } }", nil)
 	assert.Equal(t, bodyModeJSON, rb.bodyMode)
-	body := rb.body.(map[string]interface{})
+	body := rb.body.(map[string]any)
 	assert.Equal(t, "{ users { id } }", body["query"])
 }
 
@@ -939,7 +939,7 @@ type RequestBuilder struct {
 	client         *Client
 	method         Method
 	path           string
-	body           interface{}
+	body           any
 	bodyMode       bodyMode
 	rawBody        []byte
 	rawContentType string
@@ -969,13 +969,13 @@ func newRequestBuilder(c *Client, method Method, path string) *RequestBuilder {
 	}
 }
 
-func (rb *RequestBuilder) WithBody(v interface{}) *RequestBuilder {
+func (rb *RequestBuilder) WithBody(v any) *RequestBuilder {
 	rb.body = v
 	rb.bodyMode = bodyModeJSON
 	return rb
 }
 
-func (rb *RequestBuilder) WithForm(v interface{}) *RequestBuilder {
+func (rb *RequestBuilder) WithForm(v any) *RequestBuilder {
 	rb.body = v
 	rb.bodyMode = bodyModeForm
 	return rb
@@ -995,8 +995,8 @@ func (rb *RequestBuilder) WithRawBody(b []byte, contentType string) *RequestBuil
 }
 
 // WithGraphQL sets a JSON body {"query": q, "variables": vars}.
-func (rb *RequestBuilder) WithGraphQL(q string, vars map[string]interface{}) *RequestBuilder {
-	rb.body = map[string]interface{}{"query": q, "variables": vars}
+func (rb *RequestBuilder) WithGraphQL(q string, vars map[string]any) *RequestBuilder {
+	rb.body = map[string]any{"query": q, "variables": vars}
 	rb.bodyMode = bodyModeJSON
 	return rb
 }
@@ -1143,7 +1143,7 @@ import (
 )
 
 // newJSONServer creates an httptest.Server that always replies with status + JSON body.
-func newJSONServer(t *testing.T, status int, body interface{}) *httptest.Server {
+func newJSONServer(t *testing.T, status int, body any) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -1384,7 +1384,7 @@ func (rb *RequestBuilder) applyDefaults() {
 
 func (rb *RequestBuilder) logResponse(ctx context.Context, response *Response, header http.Header, rawURL string, responseTime time.Duration) {
 	contentType := header.Get("Content-Type")
-	var result interface{}
+	var result any
 	switch {
 	case xmlCheck.MatchString(contentType):
 		if err := xml.Unmarshal(response.Body, &result); err != nil {

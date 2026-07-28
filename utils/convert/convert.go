@@ -12,13 +12,16 @@ import (
 )
 
 // convert object to another object
-func ObjectToObject(in interface{}, out interface{}) {
+func ObjectToObject(in any, out any) {
 	dataByte, _ := json.Marshal(in)
-	json.Unmarshal(dataByte, &out)
+	err := json.Unmarshal(dataByte, &out)
+	if err != nil {
+		return
+	}
 }
 
 // convert object to string
-func ObjectToString(data interface{}) string {
+func ObjectToString(data any) string {
 	dataByte, err := json.Marshal(data)
 	if err != nil {
 		return ""
@@ -27,13 +30,13 @@ func ObjectToString(data interface{}) string {
 }
 
 // convert string to object
-func StringToObject(in string, out interface{}) {
+func StringToObject(in string, out any) {
 	json.Unmarshal([]byte(in), &out)
 	return
 }
 
 // convert string to object
-func ByteToObject(in []byte, out interface{}) {
+func ByteToObject(in []byte, out any) {
 	json.Unmarshal(in, &out)
 	return
 }

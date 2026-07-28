@@ -43,8 +43,8 @@ type AppContext struct {
 	responseStatus int
 	port           int
 	srcIP          string
-	header         interface{}
-	request        interface{}
+	header         any
+	request        any
 
 	logger    *Logger.Logger
 	parentCtx context.Context
@@ -175,14 +175,14 @@ func (ac *AppContext) GetSrcIP() string {
 }
 
 // GetHeader mengembalikan header (local-only, tidak dipropagasi ke context).
-func (ac *AppContext) GetHeader() interface{} {
+func (ac *AppContext) GetHeader() any {
 	ac.mu.RLock()
 	defer ac.mu.RUnlock()
 	return ac.header
 }
 
 // GetRequest mengembalikan request body (local-only, tidak dipropagasi ke context).
-func (ac *AppContext) GetRequest() interface{} {
+func (ac *AppContext) GetRequest() any {
 	ac.mu.RLock()
 	defer ac.mu.RUnlock()
 	return ac.request
@@ -314,7 +314,7 @@ func (ac *AppContext) SetSrcIP(srcIP string) *AppContext {
 }
 
 // SetHeader menyimpan request header secara lokal. Tidak dipropagasi ke context.
-func (ac *AppContext) SetHeader(header interface{}) *AppContext {
+func (ac *AppContext) SetHeader(header any) *AppContext {
 	ac.mu.Lock()
 	ac.header = header
 	ac.mu.Unlock()
@@ -322,7 +322,7 @@ func (ac *AppContext) SetHeader(header interface{}) *AppContext {
 }
 
 // SetRequest menyimpan request body secara lokal. Tidak dipropagasi ke context.
-func (ac *AppContext) SetRequest(request interface{}) *AppContext {
+func (ac *AppContext) SetRequest(request any) *AppContext {
 	ac.mu.Lock()
 	ac.request = request
 	ac.mu.Unlock()
@@ -415,7 +415,7 @@ func (ac *AppContext) Clone() *AppContext {
 
 // Get mengambil nilai dari request-scoped store.
 // Mengembalikan defaultValue[0] jika key tidak ditemukan.
-func (ac *AppContext) Get(key string, defaultValue ...interface{}) interface{} {
+func (ac *AppContext) Get(key string, defaultValue ...any) any {
 	if v, ok := ac.cMap.Load(key); ok {
 		return v
 	}
@@ -426,7 +426,7 @@ func (ac *AppContext) Get(key string, defaultValue ...interface{}) interface{} {
 }
 
 // Put menyimpan nilai ke request-scoped store.
-func (ac *AppContext) Put(key string, data interface{}) {
+func (ac *AppContext) Put(key string, data any) {
 	ac.cMap.Store(key, data)
 }
 
@@ -437,14 +437,14 @@ func (ac *AppContext) Remove(key string) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-func setContextIfNotEmpty(ctx context.Context, key interface{}, value string) context.Context {
+func setContextIfNotEmpty(ctx context.Context, key any, value string) context.Context {
 	if value != "" {
 		return context.WithValue(ctx, key, value)
 	}
 	return ctx
 }
 
-func setContextIfNotZeroTime(ctx context.Context, key interface{}, value time.Time) context.Context {
+func setContextIfNotZeroTime(ctx context.Context, key any, value time.Time) context.Context {
 	if !value.IsZero() {
 		return context.WithValue(ctx, key, value)
 	}

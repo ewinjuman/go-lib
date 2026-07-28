@@ -49,7 +49,7 @@ func New(options Options) (rpc *RpcConnection, err error) {
 	return
 }
 
-func clientInterceptor(ctx context.Context, method string, request interface{}, response interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+func clientInterceptor(ctx context.Context, method string, request any, response any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	timeStart := time.Now()
 
 	appCtx, ok := ctx.Value(constant.AppContextKey).(*appContext.AppContext)
